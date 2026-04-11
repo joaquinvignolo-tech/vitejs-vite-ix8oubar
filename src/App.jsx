@@ -16,15 +16,11 @@ const INSUMOS = [
   { id: "removedores", label: "Removedores",  unit: "u",  emoji: "🥄", step: 100 },
 ];
 
-const ALERTAS_DEFAULT = { cafe: 20, cacao: 10, azucar: 10, edulcorante: 10, leche: 30, vasos: 3000, removedores: 3000 };
-const DIAS_ALERTA_DEFAULT = 12;
-
-const MEDIOS_PAGO = [
+const ALERTAS_DEFAULT  = { cafe: 20, cacao: 10, azucar: 10, edulcorante: 10, leche: 30, vasos: 3000, removedores: 3000 };
+const DIAS_ALERTA_DEF  = 12;
+const MEDIOS_PAGO      = [
   { id: "efectivo",      label: "Efectivo",      emoji: "💵" },
   { id: "transferencia", label: "Transferencia", emoji: "📲" },
-  { id: "cheque",        label: "Cheque",        emoji: "📄" },
-  { id: "debito",        label: "Débito",        emoji: "💳" },
-  { id: "credito",       label: "Crédito",       emoji: "💳" },
 ];
 
 function zeroIns()  { return Object.fromEntries(INSUMOS.map(i => [i.id, 0]));  }
@@ -44,6 +40,24 @@ function DA(f) { const diff = Math.floor((new Date() - new Date(f)) / 86400000);
 function diasDesde(f) { return Math.floor((new Date() - new Date(f)) / 86400000); }
 function hoy() { return new Date().toISOString().split("T")[0]; }
 function horaActual() { return new Date().toTimeString().slice(0, 5); }
+
+// Consolidar entregas del mismo día
+function consolidarEntragas(lista) {
+  const mapa = {};
+  lista.forEach(e => {
+    if (!mapa[e.fecha]) {
+      mapa[e.fecha] = { ...e, insumos: { ...e.insumos } };
+    } else {
+      INSUMOS.forEach(i => {
+        mapa[e.fecha].insumos[i.id] = (mapa[e.fecha].insumos[i.id] || 0) + (e.insumos[i.id] || 0);
+      });
+      if (e.nota && mapa[e.fecha].nota !== e.nota) {
+        mapa[e.fecha].nota = [mapa[e.fecha].nota, e.nota].filter(Boolean).join(" + ");
+      }
+    }
+  });
+  return Object.values(mapa).sort((a, b) => b.fecha.localeCompare(a.fecha));
+}
 
 const AVC = ["#E6F1FB:#0C447C","#E1F5EE:#085041","#FAEEDA:#633806","#FBEAF0:#72243E","#EAF3DE:#27500A","#E6F1FB:#185FA5"];
 function avc(id) { const [bg, c] = AVC[(id - 1) % AVC.length].split(":"); return { bg, c }; }
@@ -99,13 +113,14 @@ function OkScreen({ titulo, sub, onVolver, children }) {
 
 export default function App() {
   const [role, setRole] = useState(null);
-  const [data, setData] = useState({ clientes: [], visitas: [], entregasOp: [], ingresosDepo: [], cobros: [], preciosIns: {}, precioServ: 800, configId: null, alertasStock: ALERTAS_DEFAULT, diasAlerta: DIAS_ALERTA_DEFAULT });
+  const [data, setData] = useState({ clientes: [], clientesPendientes: [], visitas: [], entregasOp: [], ingresosDepo: [], cobros: [], preciosIns: {}, precioServ: 800, configId: null, alertasStock: ALERTAS_DEFAULT, diasAlerta: DIAS_ALERTA_DEF });
   const [loading, setLoading] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const [cl, vi, eo, id, co, cfg] = await Promise.all([
+    const [cl, clPend, vi, eo, id, co, cfg] = await Promise.all([
       sb.from("clientes").select("*").eq("activo", true).order("nombre"),
+      sb.from("clientes").select("*").eq("activo", false).eq("pendiente_aprobacion", true).order("created_at", { ascending: false }),
       sb.from("visitas").select("*").order("created_at", { ascending: false }),
       sb.from("entregas_operador").select("*").order("created_at", { ascending: false }),
       sb.from("ingresos_deposito").select("*").order("created_at", { ascending: false }),
@@ -113,16 +128,17 @@ export default function App() {
       sb.from("configuracion").select("*").single(),
     ]);
     setData({
-      clientes:     cl.data || [],
-      visitas:      vi.data || [],
-      entregasOp:   eo.data || [],
-      ingresosDepo: id.data || [],
-      cobros:       co.data || [],
-      preciosIns:   cfg.data?.precios_insumos || {},
-      precioServ:   cfg.data?.precio_servicio || 800,
-      configId:     cfg.data?.id,
-      alertasStock: cfg.data?.alertas_stock || ALERTAS_DEFAULT,
-      diasAlerta:   cfg.data?.dias_alerta_visita || DIAS_ALERTA_DEFAULT,
+      clientes:            cl.data || [],
+      clientesPendientes:  clPend.data || [],
+      visitas:             vi.data || [],
+      entregasOp:          eo.data || [],
+      ingresosDepo:        id.data || [],
+      cobros:              co.data || [],
+      preciosIns:          cfg.data?.precios_insumos || {},
+      precioServ:          cfg.data?.precio_servicio || 800,
+      configId:            cfg.data?.id,
+      alertasStock:        cfg.data?.alertas_stock || ALERTAS_DEFAULT,
+      diasAlerta:          cfg.data?.dias_alerta_visita || DIAS_ALERTA_DEF,
     });
     setLoading(false);
   }, []);
@@ -132,7 +148,7 @@ export default function App() {
   const db = {
     ...data, reload,
     async addVisita(v) {
-      await sb.from("visitas").insert({ cliente_id: v.clienteId, fecha: hoy(), hora: horaActual(), contador_anterior: v.contadorAnterior || 0, contador: v.contador || 0, insumos: v.insumos, falla: v.falla, detalle_falla: v.detalleFalla, observaciones: v.observaciones });
+      await sb.from("visitas").insert({ cliente_id: v.clienteId, fecha: hoy(), hora: horaActual(), contador_anterior: v.contadorAnterior || 0, contador: v.contador || 0, servicios_manuales: v.serviciosManuales || 0, insumos: v.insumos, falla: v.falla, detalle_falla: v.detalleFalla, observaciones: v.observaciones });
       await reload();
     },
     async addCobro(c) {
@@ -152,11 +168,23 @@ export default function App() {
       await reload();
     },
     async deleteCliente(id) {
-      await sb.from("clientes").update({ activo: false }).eq("id", id);
+      await sb.from("clientes").update({ activo: false, pendiente_aprobacion: false }).eq("id", id);
       await reload();
     },
     async addCliente(c) {
       await sb.from("clientes").insert({ nombre: c.nombre, direccion: c.direccion, maquinas: c.maquinas, minimo: c.minimo });
+      await reload();
+    },
+    async proponerCliente(c) {
+      await sb.from("clientes").insert({ nombre: c.nombre, direccion: c.direccion, maquinas: c.maquinas, minimo: 250, activo: false, pendiente_aprobacion: true });
+      await reload();
+    },
+    async aprobarCliente(id) {
+      await sb.from("clientes").update({ activo: true, pendiente_aprobacion: false }).eq("id", id);
+      await reload();
+    },
+    async rechazarCliente(id) {
+      await sb.from("clientes").update({ pendiente_aprobacion: false }).eq("id", id);
       await reload();
     },
     async saveConfig(precioServ, preciosIns, alertasStock, diasAlerta) {
@@ -165,7 +193,7 @@ export default function App() {
     },
   };
 
-  const visitas  = data.visitas.map(v => ({ ...v, clienteId: v.cliente_id, contadorAnterior: v.contador_anterior, detalleFalla: v.detalle_falla }));
+  const visitas  = data.visitas.map(v => ({ ...v, clienteId: v.cliente_id, contadorAnterior: v.contador_anterior, detalleFalla: v.detalle_falla, serviciosManuales: v.servicios_manuales || 0 }));
   const cobros   = data.cobros.map(c => ({ ...c, clienteId: c.cliente_id }));
   const dbNorm   = { ...db, visitas, cobros };
 
@@ -214,6 +242,7 @@ function OpApp({ db, onLogout }) {
   const [savedCobro, setSavedCobro] = useState(null);
   const [opTab, setOpTab]           = useState("visitas");
   const [saving, setSaving]         = useState(false);
+  const [showProponer, setShowProponer] = useState(false);
 
   const totalRecibido  = sumar(db.entregasOp);
   const totalEntregado = sumar(db.visitas);
@@ -259,6 +288,7 @@ function OpApp({ db, onLogout }) {
 
   const hasStock = INSUMOS.some(i => stockOp[i.id] > 0);
   const costoStockOp = costoIns(stockOp, db.preciosIns);
+  const diasAlerta = db.diasAlerta || DIAS_ALERTA_DEF;
 
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
@@ -287,21 +317,23 @@ function OpApp({ db, onLogout }) {
           ))
         }
       </Card>
+
       <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 14 }}>
         {[{ id: "visitas", l: "Registrar visita" }, { id: "cobros", l: "Registrar cobro" }].map(t => (
           <button key={t.id} onClick={() => setOpTab(t.id)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: opTab === t.id ? 500 : 400, background: opTab === t.id ? "var(--color-background-primary)" : "transparent", color: opTab === t.id ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>{t.l}</button>
         ))}
       </div>
+
       <Sec>{opTab === "visitas" ? "Seleccioná cliente para visita" : "Seleccioná cliente para cobro"}</Sec>
       {db.clientes.map(c => {
         const uv = db.visitas.find(v => v.clienteId === c.id);
         const uc = db.cobros.find(co => co.clienteId === c.id);
         const { bg, c: col } = avc(c.id);
         const dias = uv ? diasDesde(uv.fecha) : null;
-        const enAlerta = dias !== null && dias >= (db.diasAlerta || DIAS_ALERTA_DEFAULT);
+        const enAlerta = dias === null || dias >= diasAlerta;
         return <div key={c.id} onClick={() => { setClienteSel(c); setScreen(opTab === "visitas" ? "visita" : "cobro"); }}
           style={{ background: "var(--color-background-primary)", borderRadius: 12, border: `0.5px solid ${enAlerta && opTab === "visitas" ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "12px 14px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = opTab === "visitas" ? "#378ADD" : "#1D9E75"}
+          onMouseEnter={e => e.currentTarget.style.borderColor = "#378ADD"}
           onMouseLeave={e => e.currentTarget.style.borderColor = enAlerta && opTab === "visitas" ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}>
           <Av nombre={c.nombre} bg={bg} c={col} />
           <div style={{ flex: 1 }}>
@@ -313,49 +345,114 @@ function OpApp({ db, onLogout }) {
           <div style={{ fontSize: 18, color: "var(--color-text-secondary)" }}>›</div>
         </div>;
       })}
+
+      {/* Proponer nuevo cliente */}
+      <button onClick={() => setShowProponer(p => !p)} style={{ width: "100%", padding: 11, borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "#1D9E75", fontSize: 13, fontWeight: 500, cursor: "pointer", marginTop: 8 }}>
+        {showProponer ? "Cancelar" : "+ Proponer nuevo cliente"}
+      </button>
+      {showProponer && <ProponerCliente db={db} onDone={() => setShowProponer(false)} />}
     </div>
   </div>;
 }
 
+function ProponerCliente({ db, onDone }) {
+  const [form, setForm] = useState({ nombre: "", direccion: "", maquinas: 1 });
+  const [saving, setSaving] = useState(false);
+  const [ok, setOk] = useState(false);
+
+  async function proponer() {
+    if (!form.nombre.trim()) return;
+    setSaving(true);
+    await db.proponerCliente(form);
+    setSaving(false); setOk(true);
+    setTimeout(() => { setOk(false); onDone(); }, 2000);
+  }
+
+  if (ok) return <div style={{ background: "#EAF3DE", borderRadius: 10, padding: "12px 14px", marginTop: 10, fontSize: 13, color: "#27500A" }}>✓ Propuesta enviada. El admin la revisará pronto.</div>;
+
+  return <Card style={{ marginTop: 10 }}>
+    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4 }}>Proponer nuevo cliente</div>
+    <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 12 }}>El admin deberá aprobarlo antes de que quede activo.</div>
+    {[["Nombre del lugar", "nombre"], ["Dirección", "direccion"]].map(([ph, k]) => (
+      <input key={k} placeholder={ph} value={form[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))}
+        style={{ width: "100%", marginBottom: 8, padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />
+    ))}
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <label style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Máquinas estimadas:</label>
+      <input type="number" min="1" value={form.maquinas} onChange={e => setForm(p => ({ ...p, maquinas: e.target.value }))}
+        style={{ width: 60, padding: "6px 8px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13 }} />
+    </div>
+    <button onClick={proponer} disabled={saving} style={{ padding: "10px 20px", borderRadius: 9, border: "none", background: saving ? "#888" : "#1D9E75", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
+      {saving ? "Enviando…" : "Enviar propuesta"}
+    </button>
+  </Card>;
+}
+
 function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
-  const [ins, setIns]               = useState(emptyIns());
-  const [usaContador, setUsaContador] = useState(false);
-  const [cAnt, setCAnt]             = useState("");
-  const [cAct, setCAct]             = useState("");
-  const [falla, setFalla]           = useState(false);
-  const [detF, setDetF]             = useState("");
-  const [obs, setObs]               = useState("");
-  const [err, setErr]               = useState("");
+  const [ins, setIns]                   = useState(emptyIns());
+  const [usaContador, setUsaContador]   = useState(false);
+  const [cAnt, setCAnt]                 = useState("");
+  const [cAct, setCAct]                 = useState("");
+  const [usaManual, setUsaManual]       = useState(false);
+  const [servManual, setServManual]     = useState("");
+  const [falla, setFalla]               = useState(false);
+  const [detF, setDetF]                 = useState("");
+  const [obs, setObs]                   = useState("");
+  const [err, setErr]                   = useState("");
+
   const insNum = Object.fromEntries(Object.entries(ins).map(([k, v]) => [k, parseFloat(v) || 0]));
   const costo  = costoIns(insNum, precios);
-  const cafesNuevos = Math.max(0, (parseFloat(cAct) || 0) - (parseFloat(cAnt) || 0));
+  const cafesContador = Math.max(0, (parseFloat(cAct) || 0) - (parseFloat(cAnt) || 0));
+
   function guardar() {
     for (const i of INSUMOS) { if (insNum[i.id] > (stockOp[i.id] || 0)) { setErr(`No tenés suficiente ${i.label} (disponible: ${FN(stockOp[i.id])} ${i.unit})`); return; } }
-    setErr(""); onGuardar({ clienteId: cliente.id, contadorAnterior: parseFloat(cAnt) || 0, contador: parseFloat(cAct) || 0, insumos: insNum, falla, detalleFalla: detF, observaciones: obs });
+    setErr("");
+    onGuardar({
+      clienteId: cliente.id,
+      contadorAnterior: parseFloat(cAnt) || 0,
+      contador: parseFloat(cAct) || 0,
+      serviciosManuales: usaManual ? parseInt(servManual) || 0 : 0,
+      insumos: insNum, falla, detalleFalla: detF, observaciones: obs
+    });
   }
+
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
       <button onClick={onBack} style={{ fontSize: 20, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)" }}>←</button>
       <div><div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>{cliente.nombre}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Registrar visita · {FF(hoy())}</div></div>
     </div>
     <div style={{ padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <Sec>Contador de la máquina</Sec>
-        <button onClick={() => setUsaContador(p => !p)} style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, border: "0.5px solid var(--color-border-secondary)", background: usaContador ? "#E6F1FB" : "var(--color-background-secondary)", color: usaContador ? "#0C447C" : "var(--color-text-secondary)", cursor: "pointer" }}>
-          {usaContador ? "✓ Activado" : "Opcional — activar"}
-        </button>
+
+      {/* Servicios vendidos — MANUAL o CONTADOR */}
+      <Sec>Servicios vendidos este período</Sec>
+      <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 12 }}>
+        <button onClick={() => setUsaManual(false)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: !usaManual ? 500 : 400, background: !usaManual ? "var(--color-background-primary)" : "transparent", color: !usaManual ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>Por contador</button>
+        <button onClick={() => setUsaManual(true)}  style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: usaManual ? 500 : 400, background: usaManual ? "var(--color-background-primary)" : "transparent", color: usaManual ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>Manual</button>
       </div>
-      {usaContador && <Card style={{ marginBottom: 16 }}>
+
+      {!usaManual && <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {[["Lectura anterior", cAnt, setCAnt], ["Lectura actual", cAct, setCAct]].map(([label, val, set]) => (
             <div key={label}><div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>{label}</div>
               <input type="number" min="0" placeholder="0" value={val} onChange={e => set(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 14, boxSizing: "border-box" }} /></div>
           ))}
         </div>
-        {cafesNuevos > 0 && <div style={{ marginTop: 10, background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 12, color: "#0C447C" }}>Servicios en este período</span><span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{cafesNuevos.toLocaleString("es-AR")}</span>
+        {cafesContador > 0 && <div style={{ marginTop: 10, background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 12, color: "#0C447C" }}>Servicios registrados</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{cafesContador.toLocaleString("es-AR")}</span>
         </div>}
       </Card>}
+
+      {usaManual && <Card style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Cantidad de servicios vendidos</div>
+        <input type="number" min="0" placeholder="0" value={servManual} onChange={e => setServManual(e.target.value)}
+          style={{ width: "100%", padding: 10, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 20, fontWeight: 600, boxSizing: "border-box", textAlign: "center" }} />
+        {servManual > 0 && <div style={{ marginTop: 10, background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 12, color: "#0C447C" }}>Servicios registrados</span>
+          <span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{parseInt(servManual).toLocaleString("es-AR")}</span>
+        </div>}
+      </Card>}
+
       <Sec>Insumos a dejar</Sec>
       {INSUMOS.map(ins_i => {
         const disp = stockOp[ins_i.id] || 0, over = (parseFloat(ins[ins_i.id]) || 0) > disp;
@@ -372,9 +469,12 @@ function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
           </div>
         </div>;
       })}
+
       {costo > 0 && <div style={{ background: "#E6F1FB", borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 13, color: "#0C447C" }}>Costo de esta entrega</span><span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{P(costo)}</span>
+        <span style={{ fontSize: 13, color: "#0C447C" }}>Costo de esta entrega</span>
+        <span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{P(costo)}</span>
       </div>}
+
       <Sec mt={16}>¿Hubo algún problema?</Sec>
       <div style={{ background: "var(--color-background-primary)", borderRadius: 10, border: `0.5px solid ${falla ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "10px 14px", marginBottom: falla ? 8 : 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -396,15 +496,23 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
   const [medio, setMedio] = useState("transferencia");
   const [nota, setNota]   = useState("");
   const [err, setErr]     = useState("");
-  const servReales = visitas.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+
+  // Servicios = contador O manual
+  const servReales = visitas.reduce((s, v) => {
+    const porContador = Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0));
+    const porManual   = v.serviciosManuales || 0;
+    return s + (porManual > 0 ? porManual : porContador);
+  }, 0);
   const servFact   = Math.max(cliente.minimo, servReales);
   const totalFact  = servFact * precioServ;
   const totalCob   = cobros.reduce((s, c) => s + c.monto, 0);
   const saldo      = totalFact - totalCob;
+
   function guardar() {
     if (!monto || parseFloat(monto) <= 0) { setErr("Ingresá un monto válido."); return; }
     setErr(""); onGuardar({ clienteId: cliente.id, monto: parseFloat(monto), medio, nota });
   }
+
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
       <button onClick={onBack} style={{ fontSize: 20, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)" }}>←</button>
@@ -435,13 +543,13 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
         </div>
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 8 }}>Medio de pago</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {MEDIOS_PAGO.map(m => <button key={m.id} onClick={() => setMedio(m.id)} style={{ padding: "8px 14px", borderRadius: 20, border: `1.5px solid ${medio === m.id ? "#185FA5" : "var(--color-border-tertiary)"}`, background: medio === m.id ? "#E6F1FB" : "var(--color-background-primary)", color: medio === m.id ? "#0C447C" : "var(--color-text-secondary)", cursor: "pointer", fontSize: 13, fontWeight: medio === m.id ? 500 : 400, display: "flex", alignItems: "center", gap: 5 }}><span style={{ fontSize: 14 }}>{m.emoji}</span>{m.label}</button>)}
+          <div style={{ display: "flex", gap: 10 }}>
+            {MEDIOS_PAGO.map(m => <button key={m.id} onClick={() => setMedio(m.id)} style={{ flex: 1, padding: "12px", borderRadius: 10, border: `2px solid ${medio === m.id ? "#185FA5" : "var(--color-border-tertiary)"}`, background: medio === m.id ? "#E6F1FB" : "var(--color-background-primary)", color: medio === m.id ? "#0C447C" : "var(--color-text-secondary)", cursor: "pointer", fontSize: 14, fontWeight: medio === m.id ? 600 : 400, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><span style={{ fontSize: 20 }}>{m.emoji}</span>{m.label}</button>)}
           </div>
         </div>
         <div>
           <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Nota (opcional)</div>
-          <input placeholder="Ej: pago parcial, cheque nº…" value={nota} onChange={e => setNota(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />
+          <input placeholder="Ej: pago parcial, número de transferencia…" value={nota} onChange={e => setNota(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />
         </div>
       </Card>
       {err && <div style={{ background: "#FCEBEB", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#A32D2D" }}>{err}</div>}
@@ -454,29 +562,42 @@ function AdminApp({ db, onLogout }) {
   const [tab, setTab]         = useState("facturacion");
   const [detalle, setDetalle] = useState(null);
   const tabs = [{ id: "facturacion", l: "Facturación" }, { id: "deposito", l: "Depósito" }, { id: "operador", l: "Operador" }, { id: "clientes", l: "Clientes" }, { id: "config", l: "Config" }];
-  const totIng  = sumar(db.ingresosDepo);
-  const totOp   = sumar(db.entregasOp);
-  const totCli  = sumar(db.visitas);
+  const totIng    = sumar(db.ingresosDepo);
+  const totOp     = sumar(db.entregasOp);
+  const totCli    = sumar(db.visitas);
   const stockDepo = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totIng[i.id] || 0) - (totOp[i.id] || 0))]));
   const stockOp   = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totOp[i.id] || 0) - (totCli[i.id] || 0))]));
   const alertasStock = INSUMOS.filter(i => (db.alertasStock[i.id] || 0) > 0 && (stockDepo[i.id] || 0) <= (db.alertasStock[i.id] || 0));
-  const diasAlerta = db.diasAlerta || DIAS_ALERTA_DEFAULT;
+  const diasAlerta   = db.diasAlerta || DIAS_ALERTA_DEF;
   const clientesSinVisita = db.clientes.filter(c => {
     const uv = db.visitas.find(v => v.clienteId === c.id);
     return uv ? diasDesde(uv.fecha) >= diasAlerta : true;
   });
+  const pendientes = db.clientesPendientes || [];
 
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
       <div>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>
           ☕ CaféVending · Admin
-          {(alertasStock.length > 0 || clientesSinVisita.length > 0) && <span style={{ marginLeft: 8, fontSize: 11, background: "#E24B4A", color: "#fff", padding: "2px 8px", borderRadius: 20, fontWeight: 500 }}>⚠ {alertasStock.length + clientesSinVisita.length} alerta{alertasStock.length + clientesSinVisita.length > 1 ? "s" : ""}</span>}
+          {(alertasStock.length + clientesSinVisita.length + pendientes.length) > 0 && <span style={{ marginLeft: 8, fontSize: 11, background: "#E24B4A", color: "#fff", padding: "2px 8px", borderRadius: 20, fontWeight: 500 }}>⚠ {alertasStock.length + clientesSinVisita.length + pendientes.length}</span>}
         </div>
         <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{db.clientes.length} clientes · 60 máquinas</div>
       </div>
       <button onClick={onLogout} style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "none", border: "none", cursor: "pointer" }}>Salir</button>
     </div>
+
+    {pendientes.length > 0 && <div style={{ background: "#E1F5EE", borderBottom: "0.5px solid #1D9E75", padding: "10px 20px" }}>
+      <div style={{ fontSize: 12, fontWeight: 500, color: "#085041", marginBottom: 8 }}>🆕 Clientes propuestos por el operador — pendientes de aprobación</div>
+      {pendientes.map(c => <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, background: "#fff", borderRadius: 8, padding: "8px 12px" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{c.nombre}</div>
+          <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{c.direccion} · {c.maquinas} máq.</div>
+        </div>
+        <button onClick={() => db.aprobarCliente(c.id)} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: "#1D9E75", color: "#fff", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>Aprobar</button>
+        <button onClick={() => db.rechazarCliente(c.id)} style={{ padding: "5px 12px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", fontSize: 12, cursor: "pointer" }}>Rechazar</button>
+      </div>)}
+    </div>}
 
     {alertasStock.length > 0 && <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid var(--color-border-danger)", padding: "10px 20px" }}>
       <div style={{ fontSize: 12, fontWeight: 500, color: "#A32D2D", marginBottom: 6 }}>⚠ Stock bajo en depósito</div>
@@ -509,28 +630,33 @@ function AdminApp({ db, onLogout }) {
   </div>;
 }
 
+// Helper para calcular servicios de una visita (manual o contador)
+function serviciosDeVisita(v) {
+  if (v.serviciosManuales > 0) return v.serviciosManuales;
+  return Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0));
+}
+
 function TabFact({ db }) {
   const px = db.precioServ;
   const resumen = db.clientes.map(c => {
-    const vs = db.visitas.filter(v => v.clienteId === c.id);
-    const cs = db.cobros.filter(co => co.clienteId === c.id);
-    const sR  = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+    const vs  = db.visitas.filter(v => v.clienteId === c.id);
+    const cs  = db.cobros.filter(co => co.clienteId === c.id);
+    const sR  = vs.reduce((s, v) => s + serviciosDeVisita(v), 0);
     const sF  = Math.max(c.minimo, sR);
     const fat = sF * px;
     const cI  = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
     const cob = cs.reduce((s, c) => s + c.monto, 0);
     const gan = fat - cI, mar = fat > 0 ? (gan / fat) * 100 : 0;
-    // Costo por café servido
-    const totalCafes = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+    const totalCafes   = sR;
     const costoPorCafe = totalCafes > 0 ? cI / totalCafes : null;
     return { ...c, sR, sF, fat, cI, cob, saldo: fat - cob, gan, mar, totalCafes, costoPorCafe };
   }).sort((a, b) => b.gan - a.gan);
 
-  const tF = resumen.reduce((s, r) => s + r.fat, 0);
-  const tC = resumen.reduce((s, r) => s + r.cI, 0);
-  const tG = tF - tC;
+  const tF   = resumen.reduce((s, r) => s + r.fat, 0);
+  const tC   = resumen.reduce((s, r) => s + r.cI, 0);
+  const tG   = tF - tC;
   const tCob = resumen.reduce((s, r) => s + r.cob, 0);
-  const totalCafesGlobal = resumen.reduce((s, r) => s + r.totalCafes, 0);
+  const totalCafesGlobal  = resumen.reduce((s, r) => s + r.totalCafes, 0);
   const costoPorCafeGlobal = totalCafesGlobal > 0 ? tC / totalCafesGlobal : null;
   const mejor = resumen[0], peor = resumen[resumen.length - 1];
 
@@ -541,16 +667,13 @@ function TabFact({ db }) {
       <Met label="Saldo pendiente"   value={P(tF - tCob)} sub="" warn={(tF - tCob) > 0} />
       <Met label="Ganancia bruta"    value={P(tG)}   sub={`${tF > 0 ? ((tG / tF) * 100).toFixed(1) : 0}% margen`} />
     </div>
-
-    {/* Costo por café global */}
     {costoPorCafeGlobal !== null && <div style={{ background: "#E6F1FB", borderRadius: 12, padding: "12px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <div>
         <div style={{ fontSize: 12, fontWeight: 500, color: "#0C447C" }}>☕ Costo promedio por café servido</div>
-        <div style={{ fontSize: 11, color: "#185FA5", marginTop: 2 }}>{totalCafesGlobal.toLocaleString()} servicios registrados en total</div>
+        <div style={{ fontSize: 11, color: "#185FA5", marginTop: 2 }}>{totalCafesGlobal.toLocaleString()} servicios registrados</div>
       </div>
       <div style={{ fontSize: 24, fontWeight: 700, color: "#0C447C" }}>{P(costoPorCafeGlobal)}</div>
     </div>}
-
     {resumen.length >= 2 && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
       <div style={{ background: "#EAF3DE", borderRadius: 12, padding: "12px 14px" }}>
         <div style={{ fontSize: 11, fontWeight: 500, color: "#3B6D11", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Mejor cliente</div>
@@ -563,7 +686,6 @@ function TabFact({ db }) {
         <div style={{ fontSize: 13, color: "#A32D2D", marginTop: 4 }}>{P(peor?.gan || 0)} · {peor?.sR} servicios</div>
       </div>
     </div>}
-
     <Sec>Ranking de clientes</Sec>
     {resumen.map((r, idx) => {
       const isW = idx === 0, isL = idx === resumen.length - 1;
@@ -572,10 +694,7 @@ function TabFact({ db }) {
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-text-secondary)", width: 20, textAlign: "center" }}>{idx + 1}</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{r.nombre}</div>
-            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
-              mín {r.minimo} · {r.maquinas} máq.
-              {r.costoPorCafe !== null && <span style={{ marginLeft: 8, color: "#185FA5" }}>· {P(r.costoPorCafe)}/café</span>}
-            </div>
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>mín {r.minimo} · {r.maquinas} máq.{r.costoPorCafe !== null ? <span style={{ color: "#185FA5" }}> · {P(r.costoPorCafe)}/café</span> : ""}</div>
           </div>
           <div style={{ textAlign: "right" }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: isW ? "#27500A" : isL ? "#A32D2D" : "var(--color-text-primary)" }}>{P(r.gan)}</div>
@@ -704,6 +823,7 @@ function TabOp({ db, stockOp, stockDepo }) {
   const [errs, setErrs]     = useState({});
   const formNum     = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, parseFloat(v) || 0]));
   const costoRetiro = costoIns(formNum, db.preciosIns);
+
   async function entregar() {
     const ins = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, parseFloat(v) || 0]));
     const e = {}; INSUMOS.forEach(i => { if (ins[i.id] > (stockDepo[i.id] || 0)) e[i.id] = true; });
@@ -712,6 +832,10 @@ function TabOp({ db, stockOp, stockDepo }) {
     await db.addEntregaOp({ insumos: ins, nota });
     setForm(emptyIns()); setNota(""); setShow(false); setSaving(false); setOk(true); setTimeout(() => setOk(false), 2500);
   }
+
+  // Consolidar entregas del mismo día para el historial
+  const entregasConsolidadas = consolidarEntragas(db.entregasOp);
+
   return <div>
     {ok && <div style={{ background: "#EAF3DE", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#27500A" }}>✓ Entrega registrada.</div>}
     <Card style={{ marginBottom: 16 }}>
@@ -749,9 +873,9 @@ function TabOp({ db, stockOp, stockDepo }) {
       <button onClick={entregar} disabled={saving} style={{ padding: "10px 20px", borderRadius: 9, border: "none", background: saving ? "#888" : "#185FA5", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>{saving ? "Guardando…" : "Confirmar entrega"}</button>
     </Card>}
     <Sec mt={20}>Historial entregas al operador</Sec>
-    {db.entregasOp.map(e => {
+    {entregasConsolidadas.map((e, idx) => {
       const costoE = costoIns(e.insumos, db.preciosIns);
-      return <Card key={e.id} style={{ marginBottom: 8 }}>
+      return <Card key={idx} style={{ marginBottom: 8 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
           <span style={{ fontSize: 13, fontWeight: 500 }}>{FF(e.fecha)}</span>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -771,7 +895,7 @@ function TabCli({ db, onSelect, diasAlerta }) {
     {db.clientes.map(c => {
       const vs  = db.visitas.filter(v => v.clienteId === c.id);
       const cbs = db.cobros.filter(co => co.clienteId === c.id);
-      const sR  = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+      const sR  = vs.reduce((s, v) => s + serviciosDeVisita(v), 0);
       const fat = Math.max(c.minimo, sR) * db.precioServ;
       const cob = cbs.reduce((s, c) => s + c.monto, 0);
       const uv  = vs[0];
@@ -801,14 +925,15 @@ function TabCli({ db, onSelect, diasAlerta }) {
 function DetalleCli({ cliente, db, onBack }) {
   const vs   = db.visitas.filter(v => v.clienteId === cliente.id);
   const cobs = db.cobros.filter(c => c.clienteId === cliente.id);
-  const sR   = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+  const sR   = vs.reduce((s, v) => s + serviciosDeVisita(v), 0);
   const sF   = Math.max(cliente.minimo, sR), fat = sF * db.precioServ;
   const cI   = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
   const cob  = cobs.reduce((s, c) => s + c.monto, 0), gan = fat - cI;
   const insT = sumar(vs);
-  const totalCafes   = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+  const totalCafes   = sR;
   const costoPorCafe = totalCafes > 0 ? cI / totalCafes : null;
   const [dTab, setDTab] = useState("visitas");
+
   return <div>
     <button onClick={onBack} style={{ fontSize: 13, color: "#185FA5", background: "none", border: "none", cursor: "pointer", marginBottom: 14, padding: 0 }}>← Volver</button>
     <Card style={{ marginBottom: 16 }}>
@@ -821,10 +946,7 @@ function DetalleCli({ cliente, db, onBack }) {
         <Met label="Ganancia"    value={P(gan)} sub={`${fat > 0 ? ((gan / fat) * 100).toFixed(1) : 0}%`} warn={gan < 0} />
       </div>
       {costoPorCafe !== null && <div style={{ background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 500, color: "#0C447C" }}>☕ Costo por café servido</div>
-          <div style={{ fontSize: 11, color: "#185FA5" }}>{totalCafes.toLocaleString()} cafés registrados</div>
-        </div>
+        <div><div style={{ fontSize: 12, fontWeight: 500, color: "#0C447C" }}>☕ Costo por café servido</div><div style={{ fontSize: 11, color: "#185FA5" }}>{totalCafes.toLocaleString()} servicios</div></div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#0C447C" }}>{P(costoPorCafe)}</div>
       </div>}
       <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Total insumos recibidos</div>
@@ -837,13 +959,17 @@ function DetalleCli({ cliente, db, onBack }) {
     </div>
     {dTab === "visitas" && <>
       {vs.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Sin visitas.</div>}
-      {vs.map(v => { const cafes = Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)); const cV = costoIns(v.insumos, db.preciosIns); const cpC = cafes > 0 ? cV / cafes : null;
+      {vs.map(v => {
+        const cafes = serviciosDeVisita(v);
+        const esManual = v.serviciosManuales > 0;
+        const cV = costoIns(v.insumos, db.preciosIns);
+        const cpC = cafes > 0 ? cV / cafes : null;
         return <Card key={v.id} style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 500 }}>{FF(v.fecha)} · {v.hora}</div>
               {cafes > 0 && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>
-                {v.contadorAnterior?.toLocaleString()} → {v.contador?.toLocaleString()} <span style={{ color: "#185FA5", fontWeight: 500 }}>({cafes.toLocaleString()} servicios)</span>
+                {esManual ? "Manual:" : `${v.contadorAnterior?.toLocaleString()} →  ${v.contador?.toLocaleString()}:`} <span style={{ color: "#185FA5", fontWeight: 500 }}>{cafes.toLocaleString()} servicios</span>
                 {cpC && <span style={{ color: "#0C447C", fontWeight: 500 }}> · {P(cpC)}/café</span>}
               </div>}
             </div>
@@ -855,7 +981,8 @@ function DetalleCli({ cliente, db, onBack }) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{INSUMOS.filter(i => (v.insumos[i.id] || 0) > 0).map(i => <Pill key={i.id}>{i.emoji} {FN(v.insumos[i.id])} {i.unit}</Pill>)}</div>
           {v.observaciones && <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 8, fontStyle: "italic" }}>{v.observaciones}</div>}
           {v.falla && v.detalleFalla && <div style={{ fontSize: 12, color: "#A32D2D", marginTop: 6, background: "#FCEBEB", padding: "6px 10px", borderRadius: 8 }}>{v.detalleFalla}</div>}
-        </Card>; })}
+        </Card>;
+      })}
     </>}
     {dTab === "cobros" && <>
       {cobs.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Sin cobros registrados.</div>}
@@ -875,7 +1002,7 @@ function TabCfg({ db }) {
   const [localPrecios, setLocalPrecios] = useState(db.preciosIns);
   const [localPxServ, setLocalPxServ]   = useState(db.precioServ);
   const [localAlertas, setLocalAlertas] = useState(db.alertasStock || ALERTAS_DEFAULT);
-  const [localDias, setLocalDias]       = useState(db.diasAlerta || DIAS_ALERTA_DEFAULT);
+  const [localDias, setLocalDias]       = useState(db.diasAlerta || DIAS_ALERTA_DEF);
   const [saving, setSaving]         = useState(false);
   const [saved, setSaved]           = useState(false);
 
@@ -888,10 +1015,15 @@ function TabCfg({ db }) {
     setNuevo({ nombre: "", direccion: "", maquinas: 1, minimo: 250 });
   }
   async function guardarEdicion() {
-    await db.updateCliente({ ...editando, maquinas: parseInt(editando.maquinas) || 1, minimo: parseInt(editando.minimo) || 0 }); setEditando(null);
+    await db.updateCliente({ ...editando, maquinas: parseInt(editando.maquinas) || 1, minimo: parseInt(editando.minimo) || 0 });
+    setEditando(null);
+    // NO redirige — queda en la lista
   }
   async function confirmarEliminar() {
-    await db.deleteCliente(confirmar.cliente.id); setConfirmar(null); setEditando(null);
+    await db.deleteCliente(confirmar.cliente.id);
+    setConfirmar(null);
+    setEditando(null);
+    // NO redirige — queda en la lista
   }
 
   return <div>
