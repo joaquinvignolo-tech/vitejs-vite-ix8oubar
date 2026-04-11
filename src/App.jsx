@@ -17,6 +17,7 @@ const INSUMOS = [
 ];
 
 const ALERTAS_DEFAULT = { cafe: 20, cacao: 10, azucar: 10, edulcorante: 10, leche: 30, vasos: 3000, removedores: 3000 };
+const DIAS_ALERTA_DEFAULT = 12;
 
 const MEDIOS_PAGO = [
   { id: "efectivo",      label: "Efectivo",      emoji: "💵" },
@@ -40,6 +41,7 @@ function P(n)  { return "$" + Math.round(n).toLocaleString("es-AR"); }
 function FN(n) { return Number.isInteger(n) ? n.toLocaleString("es-AR") : n.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
 function FF(f) { if (!f) return ""; const [y, m, d] = f.split("-"); return `${d}/${m}/${y}`; }
 function DA(f) { const diff = Math.floor((new Date() - new Date(f)) / 86400000); return diff === 0 ? "hoy" : diff === 1 ? "ayer" : `hace ${diff} días`; }
+function diasDesde(f) { return Math.floor((new Date() - new Date(f)) / 86400000); }
 function hoy() { return new Date().toISOString().split("T")[0]; }
 function horaActual() { return new Date().toTimeString().slice(0, 5); }
 
@@ -97,7 +99,7 @@ function OkScreen({ titulo, sub, onVolver, children }) {
 
 export default function App() {
   const [role, setRole] = useState(null);
-  const [data, setData] = useState({ clientes: [], visitas: [], entregasOp: [], ingresosDepo: [], cobros: [], preciosIns: {}, precioServ: 800, configId: null, alertasStock: ALERTAS_DEFAULT });
+  const [data, setData] = useState({ clientes: [], visitas: [], entregasOp: [], ingresosDepo: [], cobros: [], preciosIns: {}, precioServ: 800, configId: null, alertasStock: ALERTAS_DEFAULT, diasAlerta: DIAS_ALERTA_DEFAULT });
   const [loading, setLoading] = useState(false);
 
   const reload = useCallback(async () => {
@@ -120,6 +122,7 @@ export default function App() {
       precioServ:   cfg.data?.precio_servicio || 800,
       configId:     cfg.data?.id,
       alertasStock: cfg.data?.alertas_stock || ALERTAS_DEFAULT,
+      diasAlerta:   cfg.data?.dias_alerta_visita || DIAS_ALERTA_DEFAULT,
     });
     setLoading(false);
   }, []);
@@ -156,8 +159,8 @@ export default function App() {
       await sb.from("clientes").insert({ nombre: c.nombre, direccion: c.direccion, maquinas: c.maquinas, minimo: c.minimo });
       await reload();
     },
-    async saveConfig(precioServ, preciosIns, alertasStock) {
-      await sb.from("configuracion").update({ precio_servicio: precioServ, precios_insumos: preciosIns, alertas_stock: alertasStock, updated_at: new Date().toISOString() }).eq("id", data.configId);
+    async saveConfig(precioServ, preciosIns, alertasStock, diasAlerta) {
+      await sb.from("configuracion").update({ precio_servicio: precioServ, precios_insumos: preciosIns, alertas_stock: alertasStock, dias_alerta_visita: diasAlerta, updated_at: new Date().toISOString() }).eq("id", data.configId);
       await reload();
     },
   };
@@ -294,14 +297,16 @@ function OpApp({ db, onLogout }) {
         const uv = db.visitas.find(v => v.clienteId === c.id);
         const uc = db.cobros.find(co => co.clienteId === c.id);
         const { bg, c: col } = avc(c.id);
+        const dias = uv ? diasDesde(uv.fecha) : null;
+        const enAlerta = dias !== null && dias >= (db.diasAlerta || DIAS_ALERTA_DEFAULT);
         return <div key={c.id} onClick={() => { setClienteSel(c); setScreen(opTab === "visitas" ? "visita" : "cobro"); }}
-          style={{ background: "var(--color-background-primary)", borderRadius: 12, border: "0.5px solid var(--color-border-tertiary)", padding: "12px 14px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
+          style={{ background: "var(--color-background-primary)", borderRadius: 12, border: `0.5px solid ${enAlerta && opTab === "visitas" ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "12px 14px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
           onMouseEnter={e => e.currentTarget.style.borderColor = opTab === "visitas" ? "#378ADD" : "#1D9E75"}
-          onMouseLeave={e => e.currentTarget.style.borderColor = "var(--color-border-tertiary)"}>
+          onMouseLeave={e => e.currentTarget.style.borderColor = enAlerta && opTab === "visitas" ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}>
           <Av nombre={c.nombre} bg={bg} c={col} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{c.nombre}</div>
-            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: enAlerta && opTab === "visitas" ? "#A32D2D" : "var(--color-text-secondary)", marginTop: 2 }}>
               {opTab === "visitas" ? (uv ? `Última visita ${DA(uv.fecha)}` : "Sin visitas aún") : (uc ? `Último cobro ${DA(uc.fecha)}` : "Sin cobros")} · {c.maquinas} máq.
             </div>
           </div>
@@ -454,11 +459,11 @@ function AdminApp({ db, onLogout }) {
   const totCli  = sumar(db.visitas);
   const stockDepo = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totIng[i.id] || 0) - (totOp[i.id] || 0))]));
   const stockOp   = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totOp[i.id] || 0) - (totCli[i.id] || 0))]));
-
-  // Calcular alertas
-  const alertas = INSUMOS.filter(i => {
-    const minimo = db.alertasStock[i.id] || 0;
-    return minimo > 0 && (stockDepo[i.id] || 0) <= minimo;
+  const alertasStock = INSUMOS.filter(i => (db.alertasStock[i.id] || 0) > 0 && (stockDepo[i.id] || 0) <= (db.alertasStock[i.id] || 0));
+  const diasAlerta = db.diasAlerta || DIAS_ALERTA_DEFAULT;
+  const clientesSinVisita = db.clientes.filter(c => {
+    const uv = db.visitas.find(v => v.clienteId === c.id);
+    return uv ? diasDesde(uv.fecha) >= diasAlerta : true;
   });
 
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)" }}>
@@ -466,22 +471,27 @@ function AdminApp({ db, onLogout }) {
       <div>
         <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>
           ☕ CaféVending · Admin
-          {alertas.length > 0 && <span style={{ marginLeft: 8, fontSize: 11, background: "#E24B4A", color: "#fff", padding: "2px 8px", borderRadius: 20, fontWeight: 500 }}>⚠ {alertas.length} alerta{alertas.length > 1 ? "s" : ""}</span>}
+          {(alertasStock.length > 0 || clientesSinVisita.length > 0) && <span style={{ marginLeft: 8, fontSize: 11, background: "#E24B4A", color: "#fff", padding: "2px 8px", borderRadius: 20, fontWeight: 500 }}>⚠ {alertasStock.length + clientesSinVisita.length} alerta{alertasStock.length + clientesSinVisita.length > 1 ? "s" : ""}</span>}
         </div>
         <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{db.clientes.length} clientes · 60 máquinas</div>
       </div>
       <button onClick={onLogout} style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "none", border: "none", cursor: "pointer" }}>Salir</button>
     </div>
 
-    {/* Banner de alertas de stock */}
-    {alertas.length > 0 && <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid var(--color-border-danger)", padding: "10px 20px" }}>
-      <div style={{ fontSize: 12, fontWeight: 500, color: "#A32D2D", marginBottom: 6 }}>⚠ Stock bajo en depósito — reponer pronto</div>
+    {alertasStock.length > 0 && <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid var(--color-border-danger)", padding: "10px 20px" }}>
+      <div style={{ fontSize: 12, fontWeight: 500, color: "#A32D2D", marginBottom: 6 }}>⚠ Stock bajo en depósito</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {alertas.map(i => (
-          <span key={i.id} style={{ fontSize: 11, background: "#fff", border: "0.5px solid var(--color-border-danger)", color: "#A32D2D", padding: "3px 10px", borderRadius: 20 }}>
-            {i.emoji} {i.label}: {FN(stockDepo[i.id] || 0)} {i.unit} (mín {FN(db.alertasStock[i.id])})
-          </span>
-        ))}
+        {alertasStock.map(i => <span key={i.id} style={{ fontSize: 11, background: "#fff", border: "0.5px solid var(--color-border-danger)", color: "#A32D2D", padding: "3px 10px", borderRadius: 20 }}>{i.emoji} {i.label}: {FN(stockDepo[i.id] || 0)} {i.unit}</span>)}
+      </div>
+    </div>}
+
+    {clientesSinVisita.length > 0 && <div style={{ background: "#FAEEDA", borderBottom: "0.5px solid var(--color-border-warning)", padding: "10px 20px" }}>
+      <div style={{ fontSize: 12, fontWeight: 500, color: "#633806", marginBottom: 6 }}>📅 Clientes sin visita hace +{diasAlerta} días</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {clientesSinVisita.map(c => {
+          const uv = db.visitas.find(v => v.clienteId === c.id);
+          return <span key={c.id} style={{ fontSize: 11, background: "#fff", border: "0.5px solid #BA7517", color: "#633806", padding: "3px 10px", borderRadius: 20 }}>{c.nombre} {uv ? `(${diasDesde(uv.fecha)}d)` : "(sin visitas)"}</span>;
+        })}
       </div>
     </div>}
 
@@ -492,7 +502,7 @@ function AdminApp({ db, onLogout }) {
       {tab === "facturacion" && <TabFact db={db} />}
       {tab === "deposito"    && <TabDepo db={db} stockDepo={stockDepo} stockOp={stockOp} alertasStock={db.alertasStock} />}
       {tab === "operador"    && <TabOp   db={db} stockOp={stockOp} stockDepo={stockDepo} />}
-      {tab === "clientes"    && !detalle && <TabCli db={db} onSelect={setDetalle} />}
+      {tab === "clientes"    && !detalle && <TabCli db={db} onSelect={setDetalle} diasAlerta={diasAlerta} />}
       {tab === "clientes"    && detalle  && <DetalleCli cliente={detalle} db={db} onBack={() => setDetalle(null)} />}
       {tab === "config"      && <TabCfg  db={db} />}
     </div>
@@ -504,15 +514,26 @@ function TabFact({ db }) {
   const resumen = db.clientes.map(c => {
     const vs = db.visitas.filter(v => v.clienteId === c.id);
     const cs = db.cobros.filter(co => co.clienteId === c.id);
-    const sR = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
-    const sF = Math.max(c.minimo, sR);
-    const fat = sF * px, cI = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
-    const cob = cs.reduce((s, c) => s + c.monto, 0), gan = fat - cI, mar = fat > 0 ? (gan / fat) * 100 : 0;
-    return { ...c, sR, sF, fat, cI, cob, saldo: fat - cob, gan, mar };
+    const sR  = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+    const sF  = Math.max(c.minimo, sR);
+    const fat = sF * px;
+    const cI  = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
+    const cob = cs.reduce((s, c) => s + c.monto, 0);
+    const gan = fat - cI, mar = fat > 0 ? (gan / fat) * 100 : 0;
+    // Costo por café servido
+    const totalCafes = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+    const costoPorCafe = totalCafes > 0 ? cI / totalCafes : null;
+    return { ...c, sR, sF, fat, cI, cob, saldo: fat - cob, gan, mar, totalCafes, costoPorCafe };
   }).sort((a, b) => b.gan - a.gan);
-  const tF = resumen.reduce((s, r) => s + r.fat, 0), tC = resumen.reduce((s, r) => s + r.cI, 0);
-  const tG = tF - tC, tCob = resumen.reduce((s, r) => s + r.cob, 0);
+
+  const tF = resumen.reduce((s, r) => s + r.fat, 0);
+  const tC = resumen.reduce((s, r) => s + r.cI, 0);
+  const tG = tF - tC;
+  const tCob = resumen.reduce((s, r) => s + r.cob, 0);
+  const totalCafesGlobal = resumen.reduce((s, r) => s + r.totalCafes, 0);
+  const costoPorCafeGlobal = totalCafesGlobal > 0 ? tC / totalCafesGlobal : null;
   const mejor = resumen[0], peor = resumen[resumen.length - 1];
+
   return <div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginBottom: 20 }}>
       <Met label="Facturación total" value={P(tF)}   sub="a cobrar" />
@@ -520,6 +541,16 @@ function TabFact({ db }) {
       <Met label="Saldo pendiente"   value={P(tF - tCob)} sub="" warn={(tF - tCob) > 0} />
       <Met label="Ganancia bruta"    value={P(tG)}   sub={`${tF > 0 ? ((tG / tF) * 100).toFixed(1) : 0}% margen`} />
     </div>
+
+    {/* Costo por café global */}
+    {costoPorCafeGlobal !== null && <div style={{ background: "#E6F1FB", borderRadius: 12, padding: "12px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 500, color: "#0C447C" }}>☕ Costo promedio por café servido</div>
+        <div style={{ fontSize: 11, color: "#185FA5", marginTop: 2 }}>{totalCafesGlobal.toLocaleString()} servicios registrados en total</div>
+      </div>
+      <div style={{ fontSize: 24, fontWeight: 700, color: "#0C447C" }}>{P(costoPorCafeGlobal)}</div>
+    </div>}
+
     {resumen.length >= 2 && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
       <div style={{ background: "#EAF3DE", borderRadius: 12, padding: "12px 14px" }}>
         <div style={{ fontSize: 11, fontWeight: 500, color: "#3B6D11", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Mejor cliente</div>
@@ -532,20 +563,30 @@ function TabFact({ db }) {
         <div style={{ fontSize: 13, color: "#A32D2D", marginTop: 4 }}>{P(peor?.gan || 0)} · {peor?.sR} servicios</div>
       </div>
     </div>}
+
     <Sec>Ranking de clientes</Sec>
     {resumen.map((r, idx) => {
       const isW = idx === 0, isL = idx === resumen.length - 1;
       return <div key={r.id} style={{ background: isW ? "#EAF3DE" : isL ? "#FCEBEB" : "var(--color-background-primary)", borderRadius: 12, border: "0.5px solid var(--color-border-tertiary)", padding: "12px 14px", marginBottom: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-text-secondary)", width: 20, textAlign: "center" }}>{idx + 1}</div>
-          <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{r.nombre}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>mín {r.minimo} · {r.maquinas} máq.</div></div>
-          <div style={{ textAlign: "right" }}><div style={{ fontSize: 14, fontWeight: 700, color: isW ? "#27500A" : isL ? "#A32D2D" : "var(--color-text-primary)" }}>{P(r.gan)}</div><div style={{ fontSize: 11, color: r.mar > 60 ? "#27500A" : r.mar > 30 ? "#185FA5" : "#A32D2D" }}>{r.mar.toFixed(1)}% margen</div></div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{r.nombre}</div>
+            <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>
+              mín {r.minimo} · {r.maquinas} máq.
+              {r.costoPorCafe !== null && <span style={{ marginLeft: 8, color: "#185FA5" }}>· {P(r.costoPorCafe)}/café</span>}
+            </div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: isW ? "#27500A" : isL ? "#A32D2D" : "var(--color-text-primary)" }}>{P(r.gan)}</div>
+            <div style={{ fontSize: 11, color: r.mar > 60 ? "#27500A" : r.mar > 30 ? "#185FA5" : "#A32D2D" }}>{r.mar.toFixed(1)}% margen</div>
+          </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 5 }}>
-          {[["Servicios", r.sR.toLocaleString()], ["Facturar", r.sF.toLocaleString()], ["Facturado", P(r.fat)], ["Cobrado", P(r.cob)], ["Saldo", P(r.saldo)]].map(([l, v], j) => (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 5 }}>
+          {[["Servicios", r.sR.toLocaleString()], ["Facturar", r.sF.toLocaleString()], ["Facturado", P(r.fat)], ["Cobrado", P(r.cob)], ["Saldo", P(r.saldo)], ["$/café", r.costoPorCafe !== null ? P(r.costoPorCafe) : "—"]].map(([l, v], j) => (
             <div key={j} style={{ background: "rgba(0,0,0,0.04)", borderRadius: 7, padding: "5px 6px", textAlign: "center" }}>
               <div style={{ fontSize: 9, color: "var(--color-text-secondary)" }}>{l}</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: l === "Saldo" && r.saldo > 0 ? "#A32D2D" : "var(--color-text-primary)" }}>{v}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: l === "Saldo" && r.saldo > 0 ? "#A32D2D" : l === "$/café" ? "#185FA5" : "var(--color-text-primary)" }}>{v}</div>
             </div>
           ))}
         </div>
@@ -661,7 +702,7 @@ function TabOp({ db, stockOp, stockDepo }) {
   const [saving, setSaving] = useState(false);
   const [ok, setOk]         = useState(false);
   const [errs, setErrs]     = useState({});
-  const formNum    = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, parseFloat(v) || 0]));
+  const formNum     = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, parseFloat(v) || 0]));
   const costoRetiro = costoIns(formNum, db.preciosIns);
   async function entregar() {
     const ins = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, parseFloat(v) || 0]));
@@ -724,22 +765,34 @@ function TabOp({ db, stockOp, stockDepo }) {
   </div>;
 }
 
-function TabCli({ db, onSelect }) {
+function TabCli({ db, onSelect, diasAlerta }) {
   return <div>
     <Sec>Todos los clientes</Sec>
     {db.clientes.map(c => {
-      const vs = db.visitas.filter(v => v.clienteId === c.id);
+      const vs  = db.visitas.filter(v => v.clienteId === c.id);
       const cbs = db.cobros.filter(co => co.clienteId === c.id);
-      const sR = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+      const sR  = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
       const fat = Math.max(c.minimo, sR) * db.precioServ;
       const cob = cbs.reduce((s, c) => s + c.monto, 0);
+      const uv  = vs[0];
+      const dias = uv ? diasDesde(uv.fecha) : null;
+      const enAlerta = dias === null || dias >= diasAlerta;
+      const semaforo = dias === null ? "🔴" : dias >= diasAlerta ? "🔴" : dias >= Math.floor(diasAlerta * 0.6) ? "🟡" : "🟢";
       const { bg, c: col } = avc(c.id);
-      return <div key={c.id} onClick={() => onSelect(c)} style={{ background: "var(--color-background-primary)", borderRadius: 12, border: "0.5px solid var(--color-border-tertiary)", padding: "12px 14px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
+      return <div key={c.id} onClick={() => onSelect(c)} style={{ background: "var(--color-background-primary)", borderRadius: 12, border: `0.5px solid ${enAlerta ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "12px 14px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
         onMouseEnter={e => e.currentTarget.style.borderColor = "#378ADD"}
-        onMouseLeave={e => e.currentTarget.style.borderColor = "var(--color-border-tertiary)"}>
+        onMouseLeave={e => e.currentTarget.style.borderColor = enAlerta ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}>
         <Av nombre={c.nombre} bg={bg} c={col} size={40} />
-        <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{c.nombre}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 2 }}>{c.maquinas} máq · mín {c.minimo} · {vs.length} visitas</div></div>
-        <div style={{ textAlign: "right" }}><div style={{ fontSize: 13, fontWeight: 600, color: "#185FA5" }}>{P(fat)}</div>{(fat - cob) > 0 && <div style={{ fontSize: 11, color: "#A32D2D" }}>saldo {P(fat - cob)}</div>}</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{c.nombre}</div>
+          <div style={{ fontSize: 12, color: enAlerta ? "#A32D2D" : "var(--color-text-secondary)", marginTop: 2 }}>
+            {semaforo} {dias === null ? "Sin visitas" : `Última visita ${DA(uv.fecha)}`} · {c.maquinas} máq.
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "#185FA5" }}>{P(fat)}</div>
+          {(fat - cob) > 0 && <div style={{ fontSize: 11, color: "#A32D2D" }}>saldo {P(fat - cob)}</div>}
+        </div>
       </div>;
     })}
   </div>;
@@ -748,11 +801,13 @@ function TabCli({ db, onSelect }) {
 function DetalleCli({ cliente, db, onBack }) {
   const vs   = db.visitas.filter(v => v.clienteId === cliente.id);
   const cobs = db.cobros.filter(c => c.clienteId === cliente.id);
-  const sR = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
-  const sF = Math.max(cliente.minimo, sR), fat = sF * db.precioServ;
-  const cI = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
-  const cob = cobs.reduce((s, c) => s + c.monto, 0), gan = fat - cI;
+  const sR   = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+  const sF   = Math.max(cliente.minimo, sR), fat = sF * db.precioServ;
+  const cI   = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
+  const cob  = cobs.reduce((s, c) => s + c.monto, 0), gan = fat - cI;
   const insT = sumar(vs);
+  const totalCafes   = vs.reduce((s, v) => s + Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)), 0);
+  const costoPorCafe = totalCafes > 0 ? cI / totalCafes : null;
   const [dTab, setDTab] = useState("visitas");
   return <div>
     <button onClick={onBack} style={{ fontSize: 13, color: "#185FA5", background: "none", border: "none", cursor: "pointer", marginBottom: 14, padding: 0 }}>← Volver</button>
@@ -765,6 +820,13 @@ function DetalleCli({ cliente, db, onBack }) {
         <Met label="Saldo"       value={P(fat - cob)} sub="" warn={(fat - cob) > 0} />
         <Met label="Ganancia"    value={P(gan)} sub={`${fat > 0 ? ((gan / fat) * 100).toFixed(1) : 0}%`} warn={gan < 0} />
       </div>
+      {costoPorCafe !== null && <div style={{ background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 500, color: "#0C447C" }}>☕ Costo por café servido</div>
+          <div style={{ fontSize: 11, color: "#185FA5" }}>{totalCafes.toLocaleString()} cafés registrados</div>
+        </div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#0C447C" }}>{P(costoPorCafe)}</div>
+      </div>}
       <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Total insumos recibidos</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{INSUMOS.filter(i => insT[i.id] > 0).map(i => <Pill key={i.id}>{i.emoji} {FN(insT[i.id])} {i.unit}</Pill>)}</div>
     </Card>
@@ -775,14 +837,18 @@ function DetalleCli({ cliente, db, onBack }) {
     </div>
     {dTab === "visitas" && <>
       {vs.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Sin visitas.</div>}
-      {vs.map(v => { const cafes = Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0));
+      {vs.map(v => { const cafes = Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)); const cV = costoIns(v.insumos, db.preciosIns); const cpC = cafes > 0 ? cV / cafes : null;
         return <Card key={v.id} style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <div><div style={{ fontSize: 13, fontWeight: 500 }}>{FF(v.fecha)} · {v.hora}</div>
-              {cafes > 0 && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>{v.contadorAnterior?.toLocaleString()} → {v.contador?.toLocaleString()} <span style={{ color: "#185FA5", fontWeight: 500 }}>({cafes.toLocaleString()} servicios)</span></div>}
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{FF(v.fecha)} · {v.hora}</div>
+              {cafes > 0 && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>
+                {v.contadorAnterior?.toLocaleString()} → {v.contador?.toLocaleString()} <span style={{ color: "#185FA5", fontWeight: 500 }}>({cafes.toLocaleString()} servicios)</span>
+                {cpC && <span style={{ color: "#0C447C", fontWeight: 500 }}> · {P(cpC)}/café</span>}
+              </div>}
             </div>
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#185FA5" }}>{P(costoIns(v.insumos, db.preciosIns))}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#185FA5" }}>{P(cV)}</span>
               {v.falla && <span style={{ fontSize: 10, background: "#FCEBEB", color: "#A32D2D", padding: "2px 6px", borderRadius: 20 }}>Falla</span>}
             </div>
           </div>
@@ -809,11 +875,12 @@ function TabCfg({ db }) {
   const [localPrecios, setLocalPrecios] = useState(db.preciosIns);
   const [localPxServ, setLocalPxServ]   = useState(db.precioServ);
   const [localAlertas, setLocalAlertas] = useState(db.alertasStock || ALERTAS_DEFAULT);
+  const [localDias, setLocalDias]       = useState(db.diasAlerta || DIAS_ALERTA_DEFAULT);
   const [saving, setSaving]         = useState(false);
   const [saved, setSaved]           = useState(false);
 
   async function guardarConfig() {
-    setSaving(true); await db.saveConfig(localPxServ, localPrecios, localAlertas); setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
+    setSaving(true); await db.saveConfig(localPxServ, localPrecios, localAlertas, localDias); setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
   }
   async function agregar() {
     if (!nuevo.nombre.trim()) return;
@@ -837,9 +904,15 @@ function TabCfg({ db }) {
       <input type="number" value={localPxServ} onChange={e => setLocalPxServ(parseFloat(e.target.value) || 0)} style={{ width: 100, textAlign: "right", padding: 8, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 16, fontWeight: 600 }} />
     </Card>
 
-    {/* ALERTAS DE STOCK */}
+    <Sec>Alerta de visitas pendientes</Sec>
+    <Card style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>Días sin visita para alertar</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Alerta roja si hace más de N días</div></div>
+      <input type="number" min="1" value={localDias} onChange={e => setLocalDias(parseInt(e.target.value) || 1)} style={{ width: 70, textAlign: "right", padding: 8, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 16, fontWeight: 600 }} />
+      <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>días</span>
+    </Card>
+
     <Sec>Alertas de stock mínimo</Sec>
-    <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>Cuando el stock del depósito baje de este número, aparece una alerta roja. Poné 0 para desactivar.</div>
+    <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>Alerta si el depósito baja de este número. Poné 0 para desactivar.</div>
     <Card style={{ marginBottom: 20 }}>
       {INSUMOS.map(i => <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
         <span style={{ fontSize: 16 }}>{i.emoji}</span>
@@ -887,7 +960,6 @@ function TabCfg({ db }) {
       <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>$</span>
       <input type="number" value={localPrecios[i.id] || 0} onChange={e => setLocalPrecios(p => ({ ...p, [i.id]: parseFloat(e.target.value) || 0 }))} style={{ width: 90, textAlign: "right", padding: "6px 8px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13 }} />
     </div>)}
-
     <button onClick={guardarConfig} disabled={saving} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: saved ? "#1D9E75" : saving ? "#888" : "#185FA5", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 24 }}>{saved ? "✓ Guardado" : saving ? "Guardando…" : "Guardar cambios"}</button>
   </div>;
 }
