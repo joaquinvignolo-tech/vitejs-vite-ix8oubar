@@ -4,7 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 const SUPA_URL = "https://nvcgayvbbfbvdkynnwvc.supabase.co";
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im52Y2dheXZiYmZidmRreW5ud3ZjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU4NTQwNDgsImV4cCI6MjA5MTQzMDA0OH0.IXPdGzkC4w979YAUC93wWN5rOAMyDsEbFfEA1xxh274";
 const sb = createClient(SUPA_URL, SUPA_KEY);
-const CREDS = { operador: "cafe2026", admin: "estaderojo1" };
+const CREDS = { operador: "cafe2026", admin: "epichon" };
+const SESSION_KEY = "cafevending_role";
 
 const INSUMOS = [
   { id: "cafe",        label: "Café molido",  unit: "kg", emoji: "☕", step: 0.5 },
@@ -16,14 +17,15 @@ const INSUMOS = [
   { id: "removedores", label: "Removedores",  unit: "u",  emoji: "🥄", step: 100 },
 ];
 
-const ALERTAS_DEFAULT  = { cafe: 20, cacao: 10, azucar: 10, edulcorante: 10, leche: 30, vasos: 3000, removedores: 3000 };
-const DIAS_ALERTA_DEF  = 12;
-const MEDIOS_PAGO      = [
+const ALERTAS_DEFAULT = { cafe: 20, cacao: 10, azucar: 10, edulcorante: 10, leche: 30, vasos: 3000, removedores: 3000 };
+const DIAS_ALERTA_DEF = 12;
+const COMISION_DEF    = 0;
+const MEDIOS_PAGO     = [
   { id: "efectivo",      label: "Efectivo",      emoji: "💵" },
   { id: "transferencia", label: "Transferencia", emoji: "📲" },
 ];
 
-function zeroIns()  { return Object.fromEntries(INSUMOS.map(i => [i.id, 0]));  }
+function zeroIns()  { return Object.fromEntries(INSUMOS.map(i => [i.id, 0])); }
 function emptyIns() { return Object.fromEntries(INSUMOS.map(i => [i.id, ""])); }
 function sumar(lista) {
   const acc = zeroIns();
@@ -33,6 +35,10 @@ function sumar(lista) {
 function costoIns(ins, precios) {
   return INSUMOS.reduce((t, i) => t + (Number(ins[i.id]) || 0) * (precios[i.id] || 0), 0);
 }
+function serviciosDeVisita(v) {
+  if (v.serviciosManuales > 0) return v.serviciosManuales;
+  return Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0));
+}
 function P(n)  { return "$" + Math.round(n).toLocaleString("es-AR"); }
 function FN(n) { return Number.isInteger(n) ? n.toLocaleString("es-AR") : n.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }); }
 function FF(f) { if (!f) return ""; const [y, m, d] = f.split("-"); return `${d}/${m}/${y}`; }
@@ -41,19 +47,13 @@ function diasDesde(f) { return Math.floor((new Date() - new Date(f)) / 86400000)
 function hoy() { return new Date().toISOString().split("T")[0]; }
 function horaActual() { return new Date().toTimeString().slice(0, 5); }
 
-// Consolidar entregas del mismo día
 function consolidarEntragas(lista) {
   const mapa = {};
   lista.forEach(e => {
-    if (!mapa[e.fecha]) {
-      mapa[e.fecha] = { ...e, insumos: { ...e.insumos } };
-    } else {
-      INSUMOS.forEach(i => {
-        mapa[e.fecha].insumos[i.id] = (mapa[e.fecha].insumos[i.id] || 0) + (e.insumos[i.id] || 0);
-      });
-      if (e.nota && mapa[e.fecha].nota !== e.nota) {
-        mapa[e.fecha].nota = [mapa[e.fecha].nota, e.nota].filter(Boolean).join(" + ");
-      }
+    if (!mapa[e.fecha]) { mapa[e.fecha] = { ...e, insumos: { ...e.insumos } }; }
+    else {
+      INSUMOS.forEach(i => { mapa[e.fecha].insumos[i.id] = (mapa[e.fecha].insumos[i.id] || 0) + (e.insumos[i.id] || 0); });
+      if (e.nota && mapa[e.fecha].nota !== e.nota) mapa[e.fecha].nota = [mapa[e.fecha].nota, e.nota].filter(Boolean).join(" + ");
     }
   });
   return Object.values(mapa).sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -112,9 +112,12 @@ function OkScreen({ titulo, sub, onVolver, children }) {
 }
 
 export default function App() {
-  const [role, setRole] = useState(null);
-  const [data, setData] = useState({ clientes: [], clientesPendientes: [], visitas: [], entregasOp: [], ingresosDepo: [], cobros: [], preciosIns: {}, precioServ: 800, configId: null, alertasStock: ALERTAS_DEFAULT, diasAlerta: DIAS_ALERTA_DEF });
+  const [role, setRole] = useState(() => { try { return localStorage.getItem(SESSION_KEY) || null; } catch { return null; } });
+  const [data, setData] = useState({ clientes: [], clientesPendientes: [], visitas: [], entregasOp: [], ingresosDepo: [], cobros: [], preciosIns: {}, precioServ: 800, comisionOp: COMISION_DEF, configId: null, alertasStock: ALERTAS_DEFAULT, diasAlerta: DIAS_ALERTA_DEF });
   const [loading, setLoading] = useState(false);
+
+  function handleLogin(r) { try { localStorage.setItem(SESSION_KEY, r); } catch {} setRole(r); }
+  function handleLogout() { try { localStorage.removeItem(SESSION_KEY); } catch {} setRole(null); }
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -128,17 +131,18 @@ export default function App() {
       sb.from("configuracion").select("*").single(),
     ]);
     setData({
-      clientes:            cl.data || [],
-      clientesPendientes:  clPend.data || [],
-      visitas:             vi.data || [],
-      entregasOp:          eo.data || [],
-      ingresosDepo:        id.data || [],
-      cobros:              co.data || [],
-      preciosIns:          cfg.data?.precios_insumos || {},
-      precioServ:          cfg.data?.precio_servicio || 800,
-      configId:            cfg.data?.id,
-      alertasStock:        cfg.data?.alertas_stock || ALERTAS_DEFAULT,
-      diasAlerta:          cfg.data?.dias_alerta_visita || DIAS_ALERTA_DEF,
+      clientes:           cl.data || [],
+      clientesPendientes: clPend.data || [],
+      visitas:            vi.data || [],
+      entregasOp:         eo.data || [],
+      ingresosDepo:       id.data || [],
+      cobros:             co.data || [],
+      preciosIns:         cfg.data?.precios_insumos || {},
+      precioServ:         cfg.data?.precio_servicio || 800,
+      comisionOp:         cfg.data?.comision_operador || COMISION_DEF,
+      configId:           cfg.data?.id,
+      alertasStock:       cfg.data?.alertas_stock || ALERTAS_DEFAULT,
+      diasAlerta:         cfg.data?.dias_alerta_visita || DIAS_ALERTA_DEF,
     });
     setLoading(false);
   }, []);
@@ -187,27 +191,29 @@ export default function App() {
       await sb.from("clientes").update({ pendiente_aprobacion: false }).eq("id", id);
       await reload();
     },
-    async saveConfig(precioServ, preciosIns, alertasStock, diasAlerta) {
-      await sb.from("configuracion").update({ precio_servicio: precioServ, precios_insumos: preciosIns, alertas_stock: alertasStock, dias_alerta_visita: diasAlerta, updated_at: new Date().toISOString() }).eq("id", data.configId);
+    async saveConfig(precioServ, preciosIns, alertasStock, diasAlerta, comisionOp) {
+      await sb.from("configuracion").update({ precio_servicio: precioServ, precios_insumos: preciosIns, alertas_stock: alertasStock, dias_alerta_visita: diasAlerta, comision_operador: comisionOp, updated_at: new Date().toISOString() }).eq("id", data.configId);
       await reload();
     },
   };
 
-  const visitas  = data.visitas.map(v => ({ ...v, clienteId: v.cliente_id, contadorAnterior: v.contador_anterior, detalleFalla: v.detalle_falla, serviciosManuales: v.servicios_manuales || 0 }));
-  const cobros   = data.cobros.map(c => ({ ...c, clienteId: c.cliente_id }));
-  const dbNorm   = { ...db, visitas, cobros };
+  const visitas = data.visitas.map(v => ({ ...v, clienteId: v.cliente_id, contadorAnterior: v.contador_anterior, detalleFalla: v.detalle_falla, serviciosManuales: v.servicios_manuales || 0 }));
+  const cobros  = data.cobros.map(c => ({ ...c, clienteId: c.cliente_id }));
+  const dbNorm  = { ...db, visitas, cobros };
 
-  if (!role) return <Login onLogin={setRole} />;
+  if (!role) return <Login onLogin={handleLogin} />;
   if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}><div style={{ fontSize: 32 }}>☕</div><Spinner /><div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Cargando datos…</div></div>;
-  if (role === "operador") return <OpApp db={dbNorm} onLogout={() => setRole(null)} />;
-  return <AdminApp db={dbNorm} onLogout={() => setRole(null)} />;
+  if (role === "operador") return <OpApp db={dbNorm} onLogout={handleLogout} />;
+  return <AdminApp db={dbNorm} onLogout={handleLogout} />;
 }
 
+// ✅ FIX: Login envuelto en <form> para evitar warning de contraseña + sesión persistente
 function Login({ onLogin }) {
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [err, setErr]   = useState("");
-  function handleLogin() {
+  function handleSubmit(e) {
+    e.preventDefault();
     if (!user) { setErr("Seleccioná un rol primero."); return; }
     if (pass === CREDS[user]) { setErr(""); onLogin(user); }
     else { setErr("Contraseña incorrecta."); }
@@ -219,18 +225,20 @@ function Login({ onLogin }) {
         <div style={{ fontSize: 22, fontWeight: 700, color: "var(--color-text-primary)", letterSpacing: -.5 }}>CaféVending</div>
         <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 4 }}>Sistema de gestión</div>
       </div>
-      <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 16 }}>
-        {[{ r: "operador", l: "Operador" }, { r: "admin", l: "Administrador" }].map(({ r, l }) => (
-          <button key={r} onClick={() => { setUser(r); setErr(""); setPass(""); }} style={{ flex: 1, padding: "9px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: user === r ? 500 : 400, background: user === r ? "var(--color-background-primary)" : "transparent", color: user === r ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>{l}</button>
-        ))}
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Contraseña</div>
-        <input type="password" placeholder="Ingresá tu contraseña" value={pass} onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogin()}
-          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 14, boxSizing: "border-box" }} />
-      </div>
-      {err && <div style={{ fontSize: 12, color: "#A32D2D", marginBottom: 10 }}>{err}</div>}
-      <button onClick={handleLogin} style={{ width: "100%", padding: 12, borderRadius: 10, border: "none", background: "#185FA5", color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Ingresar</button>
+      <form onSubmit={handleSubmit} autoComplete="on">
+        <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 16 }}>
+          {[{ r: "operador", l: "Operador" }, { r: "admin", l: "Administrador" }].map(({ r, l }) => (
+            <button type="button" key={r} onClick={() => { setUser(r); setErr(""); setPass(""); }} style={{ flex: 1, padding: "9px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: user === r ? 500 : 400, background: user === r ? "var(--color-background-primary)" : "transparent", color: user === r ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>{l}</button>
+          ))}
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Contraseña</div>
+          <input type="password" name="password" autoComplete="current-password" placeholder="Ingresá tu contraseña" value={pass} onChange={e => setPass(e.target.value)}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 14, boxSizing: "border-box" }} />
+        </div>
+        {err && <div style={{ fontSize: 12, color: "#A32D2D", marginBottom: 10 }}>{err}</div>}
+        <button type="submit" style={{ width: "100%", padding: 12, borderRadius: 10, border: "none", background: "#185FA5", color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Ingresar</button>
+      </form>
     </div>
   </div>;
 }
@@ -243,41 +251,24 @@ function OpApp({ db, onLogout }) {
   const [opTab, setOpTab]           = useState("visitas");
   const [saving, setSaving]         = useState(false);
   const [showProponer, setShowProponer] = useState(false);
-
   const totalRecibido  = sumar(db.entregasOp);
   const totalEntregado = sumar(db.visitas);
   const stockOp = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totalRecibido[i.id] || 0) - (totalEntregado[i.id] || 0))]));
-
-  async function handleGuardarVisita(v) {
-    setSaving(true); await db.addVisita(v); setSaving(false); setSaved(v); setScreen("ok-visita");
-  }
-  async function handleGuardarCobro(c) {
-    setSaving(true); await db.addCobro(c); setSaving(false); setSavedCobro(c); setScreen("ok-cobro");
-  }
-
-  if (screen === "visita" && clienteSel)
-    return <FormVisita cliente={clienteSel} stockOp={stockOp} precios={db.preciosIns} saving={saving} onGuardar={handleGuardarVisita} onBack={() => setScreen("home")} />;
-  if (screen === "cobro" && clienteSel)
-    return <FormCobro cliente={clienteSel} precioServ={db.precioServ} visitas={db.visitas.filter(v => v.clienteId === clienteSel.id)} cobros={db.cobros.filter(c => c.clienteId === clienteSel.id)} saving={saving} onGuardar={handleGuardarCobro} onBack={() => setScreen("home")} />;
-
+  async function handleGuardarVisita(v) { setSaving(true); await db.addVisita(v); setSaving(false); setSaved(v); setScreen("ok-visita"); }
+  async function handleGuardarCobro(c) { setSaving(true); await db.addCobro(c); setSaving(false); setSavedCobro(c); setScreen("ok-cobro"); }
+  if (screen === "visita" && clienteSel) return <FormVisita cliente={clienteSel} stockOp={stockOp} precios={db.preciosIns} saving={saving} onGuardar={handleGuardarVisita} onBack={() => setScreen("home")} />;
+  if (screen === "cobro" && clienteSel)  return <FormCobro  cliente={clienteSel} precioServ={db.precioServ} visitas={db.visitas.filter(v => v.clienteId === clienteSel.id)} cobros={db.cobros.filter(c => c.clienteId === clienteSel.id)} saving={saving} onGuardar={handleGuardarCobro} onBack={() => setScreen("home")} />;
   if (screen === "ok-visita") {
     const c = db.clientes.find(c => c.id === saved?.clienteId);
     return <OkScreen titulo="Visita guardada" sub={c?.nombre} onVolver={() => setScreen("home")}>
       <Card style={{ width: "100%", maxWidth: 320 }}>
-        {INSUMOS.filter(i => (saved?.insumos[i.id] || 0) > 0).map(i => (
-          <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0", color: "var(--color-text-secondary)" }}>
-            <span>{i.emoji} {i.label}</span><span style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{FN(saved.insumos[i.id])} {i.unit}</span>
-          </div>
-        ))}
-        <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700 }}>
-          <span>Costo insumos</span><span>{P(costoIns(saved?.insumos || {}, db.preciosIns))}</span>
-        </div>
+        {INSUMOS.filter(i => (saved?.insumos[i.id] || 0) > 0).map(i => <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0", color: "var(--color-text-secondary)" }}><span>{i.emoji} {i.label}</span><span style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{FN(saved.insumos[i.id])} {i.unit}</span></div>)}
+        <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700 }}><span>Costo insumos</span><span>{P(costoIns(saved?.insumos || {}, db.preciosIns))}</span></div>
       </Card>
     </OkScreen>;
   }
   if (screen === "ok-cobro") {
-    const c = db.clientes.find(c => c.id === savedCobro?.clienteId);
-    const mp = MEDIOS_PAGO.find(m => m.id === savedCobro?.medio);
+    const c = db.clientes.find(c => c.id === savedCobro?.clienteId); const mp = MEDIOS_PAGO.find(m => m.id === savedCobro?.medio);
     return <OkScreen titulo="Cobro registrado" sub={c?.nombre} onVolver={() => setScreen("home")}>
       <Card style={{ width: "100%", maxWidth: 320, textAlign: "center" }}>
         <div style={{ fontSize: 24, fontWeight: 700, color: "#27500A", padding: "8px 0" }}>{P(savedCobro?.monto || 0)}</div>
@@ -285,56 +276,40 @@ function OpApp({ db, onLogout }) {
       </Card>
     </OkScreen>;
   }
-
   const hasStock = INSUMOS.some(i => stockOp[i.id] > 0);
-  const costoStockOp = costoIns(stockOp, db.preciosIns);
   const diasAlerta = db.diasAlerta || DIAS_ALERTA_DEF;
-
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
-      <div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>☕ CaféVending</div>
-        <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Panel del operador</div>
-      </div>
+      <div><div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>☕ CaféVending</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Panel del operador</div></div>
       <button onClick={onLogout} style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "none", border: "none", cursor: "pointer" }}>Salir</button>
     </div>
     <div style={{ padding: 16 }}>
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>📦 Insumos en mano</div>
-          {hasStock && <div style={{ fontSize: 13, fontWeight: 700, color: "#185FA5" }}>{P(costoStockOp)}</div>}
+          {hasStock && <div style={{ fontSize: 13, fontWeight: 700, color: "#185FA5" }}>{P(costoIns(stockOp, db.preciosIns))}</div>}
         </div>
-        {!hasStock
-          ? <div style={{ fontSize: 12, color: "var(--color-text-secondary)", fontStyle: "italic" }}>No tenés insumos asignados aún.</div>
-          : INSUMOS.map(i => (
-            <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-              <span style={{ color: "var(--color-text-secondary)" }}>{i.emoji} {i.label}</span>
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>{P((stockOp[i.id] || 0) * (db.preciosIns[i.id] || 0))}</span>
-                <span style={{ fontWeight: 500, color: stockOp[i.id] === 0 ? "var(--color-text-tertiary)" : "var(--color-text-primary)", minWidth: 60, textAlign: "right" }}>{FN(stockOp[i.id])} {i.unit}</span>
-              </div>
+        {!hasStock ? <div style={{ fontSize: 12, color: "var(--color-text-secondary)", fontStyle: "italic" }}>No tenés insumos asignados aún.</div>
+          : INSUMOS.map(i => <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+            <span style={{ color: "var(--color-text-secondary)" }}>{i.emoji} {i.label}</span>
+            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>{P((stockOp[i.id] || 0) * (db.preciosIns[i.id] || 0))}</span>
+              <span style={{ fontWeight: 500, color: stockOp[i.id] === 0 ? "var(--color-text-tertiary)" : "var(--color-text-primary)", minWidth: 60, textAlign: "right" }}>{FN(stockOp[i.id])} {i.unit}</span>
             </div>
-          ))
-        }
+          </div>)}
       </Card>
-
       <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 14 }}>
         {[{ id: "visitas", l: "Registrar visita" }, { id: "cobros", l: "Registrar cobro" }].map(t => (
           <button key={t.id} onClick={() => setOpTab(t.id)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: opTab === t.id ? 500 : 400, background: opTab === t.id ? "var(--color-background-primary)" : "transparent", color: opTab === t.id ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>{t.l}</button>
         ))}
       </div>
-
       <Sec>{opTab === "visitas" ? "Seleccioná cliente para visita" : "Seleccioná cliente para cobro"}</Sec>
       {db.clientes.map(c => {
-        const uv = db.visitas.find(v => v.clienteId === c.id);
-        const uc = db.cobros.find(co => co.clienteId === c.id);
-        const { bg, c: col } = avc(c.id);
-        const dias = uv ? diasDesde(uv.fecha) : null;
-        const enAlerta = dias === null || dias >= diasAlerta;
+        const uv = db.visitas.find(v => v.clienteId === c.id); const uc = db.cobros.find(co => co.clienteId === c.id);
+        const { bg, c: col } = avc(c.id); const dias = uv ? diasDesde(uv.fecha) : null; const enAlerta = dias === null || dias >= diasAlerta;
         return <div key={c.id} onClick={() => { setClienteSel(c); setScreen(opTab === "visitas" ? "visita" : "cobro"); }}
           style={{ background: "var(--color-background-primary)", borderRadius: 12, border: `0.5px solid ${enAlerta && opTab === "visitas" ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "12px 14px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = "#378ADD"}
-          onMouseLeave={e => e.currentTarget.style.borderColor = enAlerta && opTab === "visitas" ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}>
+          onMouseEnter={e => e.currentTarget.style.borderColor = "#378ADD"} onMouseLeave={e => e.currentTarget.style.borderColor = enAlerta && opTab === "visitas" ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}>
           <Av nombre={c.nombre} bg={bg} c={col} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{c.nombre}</div>
@@ -345,91 +320,49 @@ function OpApp({ db, onLogout }) {
           <div style={{ fontSize: 18, color: "var(--color-text-secondary)" }}>›</div>
         </div>;
       })}
-
-      {/* Proponer nuevo cliente */}
-      <button onClick={() => setShowProponer(p => !p)} style={{ width: "100%", padding: 11, borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "#1D9E75", fontSize: 13, fontWeight: 500, cursor: "pointer", marginTop: 8 }}>
-        {showProponer ? "Cancelar" : "+ Proponer nuevo cliente"}
-      </button>
+      <button onClick={() => setShowProponer(p => !p)} style={{ width: "100%", padding: 11, borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "#1D9E75", fontSize: 13, fontWeight: 500, cursor: "pointer", marginTop: 8 }}>{showProponer ? "Cancelar" : "+ Proponer nuevo cliente"}</button>
       {showProponer && <ProponerCliente db={db} onDone={() => setShowProponer(false)} />}
     </div>
   </div>;
 }
 
 function ProponerCliente({ db, onDone }) {
-  const [form, setForm] = useState({ nombre: "", direccion: "", maquinas: 1 });
-  const [saving, setSaving] = useState(false);
-  const [ok, setOk] = useState(false);
-
-  async function proponer() {
-    if (!form.nombre.trim()) return;
-    setSaving(true);
-    await db.proponerCliente(form);
-    setSaving(false); setOk(true);
-    setTimeout(() => { setOk(false); onDone(); }, 2000);
-  }
-
+  const [form, setForm] = useState({ nombre: "", direccion: "", maquinas: 1 }); const [saving, setSaving] = useState(false); const [ok, setOk] = useState(false);
+  async function proponer() { if (!form.nombre.trim()) return; setSaving(true); await db.proponerCliente(form); setSaving(false); setOk(true); setTimeout(() => { setOk(false); onDone(); }, 2000); }
   if (ok) return <div style={{ background: "#EAF3DE", borderRadius: 10, padding: "12px 14px", marginTop: 10, fontSize: 13, color: "#27500A" }}>✓ Propuesta enviada. El admin la revisará pronto.</div>;
-
   return <Card style={{ marginTop: 10 }}>
-    <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)", marginBottom: 4 }}>Proponer nuevo cliente</div>
+    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Proponer nuevo cliente</div>
     <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 12 }}>El admin deberá aprobarlo antes de que quede activo.</div>
-    {[["Nombre del lugar", "nombre"], ["Dirección", "direccion"]].map(([ph, k]) => (
-      <input key={k} placeholder={ph} value={form[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))}
-        style={{ width: "100%", marginBottom: 8, padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />
-    ))}
+    {[["Nombre del lugar", "nombre"], ["Dirección", "direccion"]].map(([ph, k]) => <input key={k} placeholder={ph} value={form[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))} style={{ width: "100%", marginBottom: 8, padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />)}
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
       <label style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Máquinas estimadas:</label>
-      <input type="number" min="1" value={form.maquinas} onChange={e => setForm(p => ({ ...p, maquinas: e.target.value }))}
-        style={{ width: 60, padding: "6px 8px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13 }} />
+      <input type="number" min="1" value={form.maquinas} onChange={e => setForm(p => ({ ...p, maquinas: e.target.value }))} style={{ width: 60, padding: "6px 8px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13 }} />
     </div>
-    <button onClick={proponer} disabled={saving} style={{ padding: "10px 20px", borderRadius: 9, border: "none", background: saving ? "#888" : "#1D9E75", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
-      {saving ? "Enviando…" : "Enviar propuesta"}
-    </button>
+    <button onClick={proponer} disabled={saving} style={{ padding: "10px 20px", borderRadius: 9, border: "none", background: saving ? "#888" : "#1D9E75", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>{saving ? "Enviando…" : "Enviar propuesta"}</button>
   </Card>;
 }
 
 function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
-  const [ins, setIns]                   = useState(emptyIns());
-  const [usaContador, setUsaContador]   = useState(false);
-  const [cAnt, setCAnt]                 = useState("");
-  const [cAct, setCAct]                 = useState("");
-  const [usaManual, setUsaManual]       = useState(false);
-  const [servManual, setServManual]     = useState("");
-  const [falla, setFalla]               = useState(false);
-  const [detF, setDetF]                 = useState("");
-  const [obs, setObs]                   = useState("");
-  const [err, setErr]                   = useState("");
-
+  const [ins, setIns] = useState(emptyIns()); const [usaManual, setUsaManual] = useState(false);
+  const [cAnt, setCAnt] = useState(""); const [cAct, setCAct] = useState(""); const [servManual, setServManual] = useState("");
+  const [falla, setFalla] = useState(false); const [detF, setDetF] = useState(""); const [obs, setObs] = useState(""); const [err, setErr] = useState("");
   const insNum = Object.fromEntries(Object.entries(ins).map(([k, v]) => [k, parseFloat(v) || 0]));
-  const costo  = costoIns(insNum, precios);
-  const cafesContador = Math.max(0, (parseFloat(cAct) || 0) - (parseFloat(cAnt) || 0));
-
+  const costo = costoIns(insNum, precios); const cafesContador = Math.max(0, (parseFloat(cAct) || 0) - (parseFloat(cAnt) || 0));
   function guardar() {
     for (const i of INSUMOS) { if (insNum[i.id] > (stockOp[i.id] || 0)) { setErr(`No tenés suficiente ${i.label} (disponible: ${FN(stockOp[i.id])} ${i.unit})`); return; } }
-    setErr("");
-    onGuardar({
-      clienteId: cliente.id,
-      contadorAnterior: parseFloat(cAnt) || 0,
-      contador: parseFloat(cAct) || 0,
-      serviciosManuales: usaManual ? parseInt(servManual) || 0 : 0,
-      insumos: insNum, falla, detalleFalla: detF, observaciones: obs
-    });
+    setErr(""); onGuardar({ clienteId: cliente.id, contadorAnterior: parseFloat(cAnt) || 0, contador: parseFloat(cAct) || 0, serviciosManuales: usaManual ? parseInt(servManual) || 0 : 0, insumos: insNum, falla, detalleFalla: detF, observaciones: obs });
   }
-
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
       <button onClick={onBack} style={{ fontSize: 20, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)" }}>←</button>
-      <div><div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>{cliente.nombre}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Registrar visita · {FF(hoy())}</div></div>
+      <div><div style={{ fontSize: 15, fontWeight: 600 }}>{cliente.nombre}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Registrar visita · {FF(hoy())}</div></div>
     </div>
     <div style={{ padding: 16 }}>
-
-      {/* Servicios vendidos — MANUAL o CONTADOR */}
       <Sec>Servicios vendidos este período</Sec>
       <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 12 }}>
         <button onClick={() => setUsaManual(false)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: !usaManual ? 500 : 400, background: !usaManual ? "var(--color-background-primary)" : "transparent", color: !usaManual ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>Por contador</button>
         <button onClick={() => setUsaManual(true)}  style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: usaManual ? 500 : 400, background: usaManual ? "var(--color-background-primary)" : "transparent", color: usaManual ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>Manual</button>
       </div>
-
       {!usaManual && <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {[["Lectura anterior", cAnt, setCAnt], ["Lectura actual", cAct, setCAct]].map(([label, val, set]) => (
@@ -438,27 +371,22 @@ function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
           ))}
         </div>
         {cafesContador > 0 && <div style={{ marginTop: 10, background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 12, color: "#0C447C" }}>Servicios registrados</span>
-          <span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{cafesContador.toLocaleString("es-AR")}</span>
+          <span style={{ fontSize: 12, color: "#0C447C" }}>Servicios registrados</span><span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{cafesContador.toLocaleString("es-AR")}</span>
         </div>}
       </Card>}
-
       {usaManual && <Card style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Cantidad de servicios vendidos</div>
-        <input type="number" min="0" placeholder="0" value={servManual} onChange={e => setServManual(e.target.value)}
-          style={{ width: "100%", padding: 10, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 20, fontWeight: 600, boxSizing: "border-box", textAlign: "center" }} />
+        <input type="number" min="0" placeholder="0" value={servManual} onChange={e => setServManual(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 20, fontWeight: 600, boxSizing: "border-box", textAlign: "center" }} />
         {servManual > 0 && <div style={{ marginTop: 10, background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 12, color: "#0C447C" }}>Servicios registrados</span>
-          <span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{parseInt(servManual).toLocaleString("es-AR")}</span>
+          <span style={{ fontSize: 12, color: "#0C447C" }}>Servicios registrados</span><span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{parseInt(servManual).toLocaleString("es-AR")}</span>
         </div>}
       </Card>}
-
       <Sec>Insumos a dejar</Sec>
       {INSUMOS.map(ins_i => {
         const disp = stockOp[ins_i.id] || 0, over = (parseFloat(ins[ins_i.id]) || 0) > disp;
         return <div key={ins_i.id} style={{ background: "var(--color-background-primary)", borderRadius: 10, border: `0.5px solid ${over ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "10px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 16 }}>{ins_i.emoji}</span>
-          <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{ins_i.label}</div><div style={{ fontSize: 11, color: disp === 0 ? "#A32D2D" : "var(--color-text-secondary)" }}>En mano: {FN(disp)} {ins_i.unit}</div></div>
+          <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{ins_i.label}</div><div style={{ fontSize: 11, color: disp === 0 ? "#A32D2D" : "var(--color-text-secondary)" }}>En mano: {FN(disp)} {ins_i.unit}</div></div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <button onClick={() => setIns(p => ({ ...p, [ins_i.id]: Math.max(0, (parseFloat(p[ins_i.id]) || 0) - ins_i.step).toString() }))} style={{ width: 28, height: 28, borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
@@ -469,16 +397,13 @@ function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
           </div>
         </div>;
       })}
-
       {costo > 0 && <div style={{ background: "#E6F1FB", borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 13, color: "#0C447C" }}>Costo de esta entrega</span>
-        <span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{P(costo)}</span>
+        <span style={{ fontSize: 13, color: "#0C447C" }}>Costo de esta entrega</span><span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{P(costo)}</span>
       </div>}
-
       <Sec mt={16}>¿Hubo algún problema?</Sec>
       <div style={{ background: "var(--color-background-primary)", borderRadius: 10, border: `0.5px solid ${falla ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "10px 14px", marginBottom: falla ? 8 : 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 16 }}>⚠️</span><div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>Falla en la máquina</div>
+          <span style={{ fontSize: 16 }}>⚠️</span><div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>Falla en la máquina</div>
           <button onClick={() => setFalla(p => !p)} style={{ padding: "5px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: falla ? "#FCEBEB" : "var(--color-background-secondary)", color: falla ? "#A32D2D" : "var(--color-text-secondary)" }}>{falla ? "Sí" : "No"}</button>
         </div>
       </div>
@@ -492,31 +417,15 @@ function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
 }
 
 function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, onBack }) {
-  const [monto, setMonto] = useState("");
-  const [medio, setMedio] = useState("transferencia");
-  const [nota, setNota]   = useState("");
-  const [err, setErr]     = useState("");
-
-  // Servicios = contador O manual
-  const servReales = visitas.reduce((s, v) => {
-    const porContador = Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0));
-    const porManual   = v.serviciosManuales || 0;
-    return s + (porManual > 0 ? porManual : porContador);
-  }, 0);
-  const servFact   = Math.max(cliente.minimo, servReales);
-  const totalFact  = servFact * precioServ;
-  const totalCob   = cobros.reduce((s, c) => s + c.monto, 0);
-  const saldo      = totalFact - totalCob;
-
-  function guardar() {
-    if (!monto || parseFloat(monto) <= 0) { setErr("Ingresá un monto válido."); return; }
-    setErr(""); onGuardar({ clienteId: cliente.id, monto: parseFloat(monto), medio, nota });
-  }
-
+  const [monto, setMonto] = useState(""); const [medio, setMedio] = useState("transferencia"); const [nota, setNota] = useState(""); const [err, setErr] = useState("");
+  const servReales = visitas.reduce((s, v) => { const porContador = Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)); const porManual = v.serviciosManuales || 0; return s + (porManual > 0 ? porManual : porContador); }, 0);
+  const servFact = Math.max(cliente.minimo, servReales), totalFact = servFact * precioServ;
+  const totalCob = cobros.reduce((s, c) => s + c.monto, 0), saldo = totalFact - totalCob;
+  function guardar() { if (!monto || parseFloat(monto) <= 0) { setErr("Ingresá un monto válido."); return; } setErr(""); onGuardar({ clienteId: cliente.id, monto: parseFloat(monto), medio, nota }); }
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
       <button onClick={onBack} style={{ fontSize: 20, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)" }}>←</button>
-      <div><div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>{cliente.nombre}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Registrar cobro · {FF(hoy())}</div></div>
+      <div><div style={{ fontSize: 15, fontWeight: 600 }}>{cliente.nombre}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Registrar cobro · {FF(hoy())}</div></div>
     </div>
     <div style={{ padding: 16 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
@@ -559,63 +468,41 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
 }
 
 function AdminApp({ db, onLogout }) {
-  const [tab, setTab]         = useState("facturacion");
-  const [detalle, setDetalle] = useState(null);
+  const [tab, setTab] = useState("facturacion"); const [detalle, setDetalle] = useState(null);
   const tabs = [{ id: "facturacion", l: "Facturación" }, { id: "deposito", l: "Depósito" }, { id: "operador", l: "Operador" }, { id: "clientes", l: "Clientes" }, { id: "config", l: "Config" }];
-  const totIng    = sumar(db.ingresosDepo);
-  const totOp     = sumar(db.entregasOp);
-  const totCli    = sumar(db.visitas);
+  const totIng = sumar(db.ingresosDepo), totOp = sumar(db.entregasOp), totCli = sumar(db.visitas);
   const stockDepo = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totIng[i.id] || 0) - (totOp[i.id] || 0))]));
   const stockOp   = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totOp[i.id] || 0) - (totCli[i.id] || 0))]));
   const alertasStock = INSUMOS.filter(i => (db.alertasStock[i.id] || 0) > 0 && (stockDepo[i.id] || 0) <= (db.alertasStock[i.id] || 0));
-  const diasAlerta   = db.diasAlerta || DIAS_ALERTA_DEF;
-  const clientesSinVisita = db.clientes.filter(c => {
-    const uv = db.visitas.find(v => v.clienteId === c.id);
-    return uv ? diasDesde(uv.fecha) >= diasAlerta : true;
-  });
+  const diasAlerta = db.diasAlerta || DIAS_ALERTA_DEF;
+  const clientesSinVisita = db.clientes.filter(c => { const uv = db.visitas.find(v => v.clienteId === c.id); return uv ? diasDesde(uv.fecha) >= diasAlerta : true; });
   const pendientes = db.clientesPendientes || [];
-
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
       <div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>
-          ☕ CaféVending · Admin
+        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>☕ CaféVending · Admin
           {(alertasStock.length + clientesSinVisita.length + pendientes.length) > 0 && <span style={{ marginLeft: 8, fontSize: 11, background: "#E24B4A", color: "#fff", padding: "2px 8px", borderRadius: 20, fontWeight: 500 }}>⚠ {alertasStock.length + clientesSinVisita.length + pendientes.length}</span>}
         </div>
         <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{db.clientes.length} clientes · 60 máquinas</div>
       </div>
       <button onClick={onLogout} style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "none", border: "none", cursor: "pointer" }}>Salir</button>
     </div>
-
     {pendientes.length > 0 && <div style={{ background: "#E1F5EE", borderBottom: "0.5px solid #1D9E75", padding: "10px 20px" }}>
-      <div style={{ fontSize: 12, fontWeight: 500, color: "#085041", marginBottom: 8 }}>🆕 Clientes propuestos por el operador — pendientes de aprobación</div>
+      <div style={{ fontSize: 12, fontWeight: 500, color: "#085041", marginBottom: 8 }}>🆕 Clientes propuestos por el operador</div>
       {pendientes.map(c => <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, background: "#fff", borderRadius: 8, padding: "8px 12px" }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{c.nombre}</div>
-          <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{c.direccion} · {c.maquinas} máq.</div>
-        </div>
+        <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{c.nombre}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{c.direccion} · {c.maquinas} máq.</div></div>
         <button onClick={() => db.aprobarCliente(c.id)} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: "#1D9E75", color: "#fff", fontSize: 12, fontWeight: 500, cursor: "pointer" }}>Aprobar</button>
         <button onClick={() => db.rechazarCliente(c.id)} style={{ padding: "5px 12px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", fontSize: 12, cursor: "pointer" }}>Rechazar</button>
       </div>)}
     </div>}
-
     {alertasStock.length > 0 && <div style={{ background: "#FCEBEB", borderBottom: "0.5px solid var(--color-border-danger)", padding: "10px 20px" }}>
       <div style={{ fontSize: 12, fontWeight: 500, color: "#A32D2D", marginBottom: 6 }}>⚠ Stock bajo en depósito</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {alertasStock.map(i => <span key={i.id} style={{ fontSize: 11, background: "#fff", border: "0.5px solid var(--color-border-danger)", color: "#A32D2D", padding: "3px 10px", borderRadius: 20 }}>{i.emoji} {i.label}: {FN(stockDepo[i.id] || 0)} {i.unit}</span>)}
-      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{alertasStock.map(i => <span key={i.id} style={{ fontSize: 11, background: "#fff", border: "0.5px solid var(--color-border-danger)", color: "#A32D2D", padding: "3px 10px", borderRadius: 20 }}>{i.emoji} {i.label}: {FN(stockDepo[i.id] || 0)} {i.unit}</span>)}</div>
     </div>}
-
     {clientesSinVisita.length > 0 && <div style={{ background: "#FAEEDA", borderBottom: "0.5px solid var(--color-border-warning)", padding: "10px 20px" }}>
       <div style={{ fontSize: 12, fontWeight: 500, color: "#633806", marginBottom: 6 }}>📅 Clientes sin visita hace +{diasAlerta} días</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {clientesSinVisita.map(c => {
-          const uv = db.visitas.find(v => v.clienteId === c.id);
-          return <span key={c.id} style={{ fontSize: 11, background: "#fff", border: "0.5px solid #BA7517", color: "#633806", padding: "3px 10px", borderRadius: 20 }}>{c.nombre} {uv ? `(${diasDesde(uv.fecha)}d)` : "(sin visitas)"}</span>;
-        })}
-      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{clientesSinVisita.map(c => { const uv = db.visitas.find(v => v.clienteId === c.id); return <span key={c.id} style={{ fontSize: 11, background: "#fff", border: "0.5px solid #BA7517", color: "#633806", padding: "3px 10px", borderRadius: 20 }}>{c.nombre} {uv ? `(${diasDesde(uv.fecha)}d)` : "(sin visitas)"}</span>; })}</div>
     </div>}
-
     <div style={{ display: "flex", borderBottom: "0.5px solid var(--color-border-tertiary)", background: "var(--color-background-primary)", overflowX: "auto" }}>
       {tabs.map(t => <button key={t.id} onClick={() => { setTab(t.id); setDetalle(null); }} style={{ padding: "10px 16px", border: "none", background: "none", cursor: "pointer", fontSize: 13, whiteSpace: "nowrap", color: tab === t.id ? "#185FA5" : "var(--color-text-secondary)", borderBottom: tab === t.id ? "2px solid #185FA5" : "2px solid transparent", fontWeight: tab === t.id ? 500 : 400 }}>{t.l}</button>)}
     </div>
@@ -630,58 +517,40 @@ function AdminApp({ db, onLogout }) {
   </div>;
 }
 
-// Helper para calcular servicios de una visita (manual o contador)
-function serviciosDeVisita(v) {
-  if (v.serviciosManuales > 0) return v.serviciosManuales;
-  return Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0));
-}
-
 function TabFact({ db }) {
   const px = db.precioServ;
   const resumen = db.clientes.map(c => {
-    const vs  = db.visitas.filter(v => v.clienteId === c.id);
-    const cs  = db.cobros.filter(co => co.clienteId === c.id);
-    const sR  = vs.reduce((s, v) => s + serviciosDeVisita(v), 0);
-    const sF  = Math.max(c.minimo, sR);
-    const fat = sF * px;
-    const cI  = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
-    const cob = cs.reduce((s, c) => s + c.monto, 0);
-    const gan = fat - cI, mar = fat > 0 ? (gan / fat) * 100 : 0;
-    const totalCafes   = sR;
-    const costoPorCafe = totalCafes > 0 ? cI / totalCafes : null;
-    return { ...c, sR, sF, fat, cI, cob, saldo: fat - cob, gan, mar, totalCafes, costoPorCafe };
+    const vs = db.visitas.filter(v => v.clienteId === c.id), cs = db.cobros.filter(co => co.clienteId === c.id);
+    const sR = vs.reduce((s, v) => s + serviciosDeVisita(v), 0), sF = Math.max(c.minimo, sR), fat = sF * px;
+    const cI = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
+    const cob = cs.reduce((s, c) => s + c.monto, 0), gan = fat - cI, mar = fat > 0 ? (gan / fat) * 100 : 0;
+    const costoPorCafe = sR > 0 ? cI / sR : null;
+    return { ...c, sR, sF, fat, cI, cob, saldo: fat - cob, gan, mar, totalCafes: sR, costoPorCafe };
   }).sort((a, b) => b.gan - a.gan);
-
-  const tF   = resumen.reduce((s, r) => s + r.fat, 0);
-  const tC   = resumen.reduce((s, r) => s + r.cI, 0);
-  const tG   = tF - tC;
-  const tCob = resumen.reduce((s, r) => s + r.cob, 0);
-  const totalCafesGlobal  = resumen.reduce((s, r) => s + r.totalCafes, 0);
+  const tF = resumen.reduce((s, r) => s + r.fat, 0), tC = resumen.reduce((s, r) => s + r.cI, 0);
+  const tG = tF - tC, tCob = resumen.reduce((s, r) => s + r.cob, 0);
+  const totalCafesGlobal = resumen.reduce((s, r) => s + r.totalCafes, 0);
   const costoPorCafeGlobal = totalCafesGlobal > 0 ? tC / totalCafesGlobal : null;
   const mejor = resumen[0], peor = resumen[resumen.length - 1];
-
   return <div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 10, marginBottom: 20 }}>
-      <Met label="Facturación total" value={P(tF)}   sub="a cobrar" />
+      <Met label="Facturación total" value={P(tF)} sub="a cobrar" />
       <Met label="Cobrado"           value={P(tCob)} sub={`${db.cobros.length} pagos`} />
       <Met label="Saldo pendiente"   value={P(tF - tCob)} sub="" warn={(tF - tCob) > 0} />
-      <Met label="Ganancia bruta"    value={P(tG)}   sub={`${tF > 0 ? ((tG / tF) * 100).toFixed(1) : 0}% margen`} />
+      <Met label="Ganancia bruta"    value={P(tG)} sub={`${tF > 0 ? ((tG / tF) * 100).toFixed(1) : 0}% margen`} />
     </div>
     {costoPorCafeGlobal !== null && <div style={{ background: "#E6F1FB", borderRadius: 12, padding: "12px 16px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <div>
-        <div style={{ fontSize: 12, fontWeight: 500, color: "#0C447C" }}>☕ Costo promedio por café servido</div>
-        <div style={{ fontSize: 11, color: "#185FA5", marginTop: 2 }}>{totalCafesGlobal.toLocaleString()} servicios registrados</div>
-      </div>
+      <div><div style={{ fontSize: 12, fontWeight: 500, color: "#0C447C" }}>☕ Costo promedio por café servido</div><div style={{ fontSize: 11, color: "#185FA5", marginTop: 2 }}>{totalCafesGlobal.toLocaleString()} servicios registrados</div></div>
       <div style={{ fontSize: 24, fontWeight: 700, color: "#0C447C" }}>{P(costoPorCafeGlobal)}</div>
     </div>}
     {resumen.length >= 2 && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
       <div style={{ background: "#EAF3DE", borderRadius: 12, padding: "12px 14px" }}>
-        <div style={{ fontSize: 11, fontWeight: 500, color: "#3B6D11", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Mejor cliente</div>
+        <div style={{ fontSize: 11, fontWeight: 500, color: "#3B6D11", marginBottom: 6, textTransform: "uppercase" }}>Mejor cliente</div>
         <div style={{ fontSize: 14, fontWeight: 600, color: "#27500A" }}>{mejor?.nombre}</div>
         <div style={{ fontSize: 13, color: "#3B6D11", marginTop: 4 }}>{P(mejor?.gan || 0)} · {mejor?.mar.toFixed(1)}%</div>
       </div>
       <div style={{ background: "#FCEBEB", borderRadius: 12, padding: "12px 14px" }}>
-        <div style={{ fontSize: 11, fontWeight: 500, color: "#A32D2D", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Peor cliente</div>
+        <div style={{ fontSize: 11, fontWeight: 500, color: "#A32D2D", marginBottom: 6, textTransform: "uppercase" }}>Peor cliente</div>
         <div style={{ fontSize: 14, fontWeight: 600, color: "#791F1F" }}>{peor?.nombre}</div>
         <div style={{ fontSize: 13, color: "#A32D2D", marginTop: 4 }}>{P(peor?.gan || 0)} · {peor?.sR} servicios</div>
       </div>
@@ -693,7 +562,7 @@ function TabFact({ db }) {
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--color-text-secondary)", width: 20, textAlign: "center" }}>{idx + 1}</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{r.nombre}</div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>{r.nombre}</div>
             <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>mín {r.minimo} · {r.maquinas} máq.{r.costoPorCafe !== null ? <span style={{ color: "#185FA5" }}> · {P(r.costoPorCafe)}/café</span> : ""}</div>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -717,63 +586,43 @@ function TabFact({ db }) {
 }
 
 function TabDepo({ db, stockDepo, stockOp, alertasStock }) {
-  const [show, setShow]     = useState(false);
-  const [form, setForm]     = useState(emptyIns());
-  const [nota, setNota]     = useState("");
-  const [saving, setSaving] = useState(false);
-  const [ok, setOk]         = useState(false);
-  const valorDepo  = INSUMOS.reduce((t, i) => t + (stockDepo[i.id] || 0) * (db.preciosIns[i.id] || 0), 0);
-  const valorOp    = INSUMOS.reduce((t, i) => t + (stockOp[i.id] || 0) * (db.preciosIns[i.id] || 0), 0);
-  const valorTotal = valorDepo + valorOp;
+  const [show, setShow] = useState(false), [form, setForm] = useState(emptyIns()), [nota, setNota] = useState(""), [saving, setSaving] = useState(false), [ok, setOk] = useState(false);
+  const valorDepo = INSUMOS.reduce((t, i) => t + (stockDepo[i.id] || 0) * (db.preciosIns[i.id] || 0), 0);
+  const valorOp   = INSUMOS.reduce((t, i) => t + (stockOp[i.id] || 0) * (db.preciosIns[i.id] || 0), 0);
   async function add() {
-    setSaving(true);
-    const ins = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, parseFloat(v) || 0]));
-    await db.addIngresoDepo({ insumos: ins, nota });
-    setForm(emptyIns()); setNota(""); setShow(false); setSaving(false); setOk(true); setTimeout(() => setOk(false), 2500);
+    setSaving(true); const ins = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, parseFloat(v) || 0]));
+    await db.addIngresoDepo({ insumos: ins, nota }); setForm(emptyIns()); setNota(""); setShow(false); setSaving(false); setOk(true); setTimeout(() => setOk(false), 2500);
   }
   return <div>
     {ok && <div style={{ background: "#EAF3DE", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#27500A" }}>✓ Ingreso registrado.</div>}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 10, marginBottom: 20 }}>
-      <Met label="Valor en depósito"  value={P(valorDepo)}  sub="mercadería disponible" />
-      <Met label="Valor con operador" value={P(valorOp)}    sub="mercadería en calle" />
-      <Met label="Inventario total"   value={P(valorTotal)} sub="depósito + operador" />
+      <Met label="Valor en depósito"  value={P(valorDepo)} sub="disponible" />
+      <Met label="Valor con operador" value={P(valorOp)}   sub="en calle" />
+      <Met label="Inventario total"   value={P(valorDepo + valorOp)} sub="total" />
     </div>
     <Sec>Detalle del inventario</Sec>
     <Card style={{ marginBottom: 20 }}>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-              {["Insumo", "Precio unit.", "Depósito", "Valor depo.", "Operador", "Valor op.", "Total $"].map(h => (
-                <th key={h} style={{ padding: "6px 8px", textAlign: h === "Insumo" ? "left" : "right", fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {INSUMOS.map(i => {
-              const vd = (stockDepo[i.id] || 0) * (db.preciosIns[i.id] || 0);
-              const vo = (stockOp[i.id] || 0) * (db.preciosIns[i.id] || 0);
-              const enAlerta = (alertasStock[i.id] || 0) > 0 && (stockDepo[i.id] || 0) <= (alertasStock[i.id] || 0);
-              return <tr key={i.id} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)", background: enAlerta ? "#FCEBEB" : "transparent" }}>
-                <td style={{ padding: "7px 8px" }}>{i.emoji} {i.label}{enAlerta ? " ⚠" : ""}</td>
-                <td style={{ padding: "7px 8px", textAlign: "right", color: "var(--color-text-secondary)" }}>{P(db.preciosIns[i.id] || 0)}</td>
-                <td style={{ padding: "7px 8px", textAlign: "right", color: enAlerta ? "#A32D2D" : "var(--color-text-primary)", fontWeight: enAlerta ? 600 : 400 }}>{FN(stockDepo[i.id] || 0)} {i.unit}</td>
-                <td style={{ padding: "7px 8px", textAlign: "right", color: "#185FA5" }}>{P(vd)}</td>
-                <td style={{ padding: "7px 8px", textAlign: "right" }}>{FN(stockOp[i.id] || 0)} {i.unit}</td>
-                <td style={{ padding: "7px 8px", textAlign: "right", color: "#185FA5" }}>{P(vo)}</td>
-                <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 600 }}>{P(vd + vo)}</td>
-              </tr>;
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{ borderTop: "1px solid var(--color-border-primary)", background: "var(--color-background-secondary)" }}>
-              <td colSpan={3} style={{ padding: "7px 8px", fontWeight: 600, fontSize: 13 }}>TOTAL</td>
-              <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: "#185FA5" }}>{P(valorDepo)}</td>
-              <td style={{ padding: "7px 8px" }}></td>
-              <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, color: "#185FA5" }}>{P(valorOp)}</td>
-              <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 700, fontSize: 14 }}>{P(valorTotal)}</td>
-            </tr>
-          </tfoot>
+          <thead><tr style={{ borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+            {["Insumo","Precio unit.","Depósito","Valor depo.","Operador","Valor op.","Total $"].map(h => <th key={h} style={{ padding: "6px 8px", textAlign: h==="Insumo"?"left":"right", fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>{h}</th>)}
+          </tr></thead>
+          <tbody>{INSUMOS.map(i => { const vd=(stockDepo[i.id]||0)*(db.preciosIns[i.id]||0),vo=(stockOp[i.id]||0)*(db.preciosIns[i.id]||0),alerta=(alertasStock[i.id]||0)>0&&(stockDepo[i.id]||0)<=(alertasStock[i.id]||0);
+            return <tr key={i.id} style={{ borderBottom: "0.5px solid var(--color-border-tertiary)", background: alerta?"#FCEBEB":"transparent" }}>
+              <td style={{ padding:"7px 8px" }}>{i.emoji} {i.label}{alerta?" ⚠":""}</td>
+              <td style={{ padding:"7px 8px",textAlign:"right",color:"var(--color-text-secondary)" }}>{P(db.preciosIns[i.id]||0)}</td>
+              <td style={{ padding:"7px 8px",textAlign:"right",color:alerta?"#A32D2D":"var(--color-text-primary)",fontWeight:alerta?600:400 }}>{FN(stockDepo[i.id]||0)} {i.unit}</td>
+              <td style={{ padding:"7px 8px",textAlign:"right",color:"#185FA5" }}>{P(vd)}</td>
+              <td style={{ padding:"7px 8px",textAlign:"right" }}>{FN(stockOp[i.id]||0)} {i.unit}</td>
+              <td style={{ padding:"7px 8px",textAlign:"right",color:"#185FA5" }}>{P(vo)}</td>
+              <td style={{ padding:"7px 8px",textAlign:"right",fontWeight:600 }}>{P(vd+vo)}</td>
+            </tr>; })}</tbody>
+          <tfoot><tr style={{ borderTop:"1px solid var(--color-border-primary)",background:"var(--color-background-secondary)" }}>
+            <td colSpan={3} style={{ padding:"7px 8px",fontWeight:600 }}>TOTAL</td>
+            <td style={{ padding:"7px 8px",textAlign:"right",fontWeight:700,color:"#185FA5" }}>{P(valorDepo)}</td><td></td>
+            <td style={{ padding:"7px 8px",textAlign:"right",fontWeight:700,color:"#185FA5" }}>{P(valorOp)}</td>
+            <td style={{ padding:"7px 8px",textAlign:"right",fontWeight:700,fontSize:14 }}>{P(valorDepo+valorOp)}</td>
+          </tr></tfoot>
         </table>
       </div>
     </Card>
@@ -781,317 +630,270 @@ function TabDepo({ db, stockDepo, stockOp, alertasStock }) {
       {[["🏭 Depósito", stockDepo], ["🚚 Operador", stockOp]].map(([label, stock]) => (
         <Card key={label}>
           <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</div>
-          {INSUMOS.map(i => {
-            const enAlerta = label.includes("Depósito") && (alertasStock[i.id] || 0) > 0 && (stock[i.id] || 0) <= (alertasStock[i.id] || 0);
-            return <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-              <span style={{ color: "var(--color-text-secondary)" }}>{i.emoji} {i.label}</span>
-              <span style={{ fontWeight: 500, color: enAlerta ? "#E24B4A" : stock[i.id] === 0 ? "var(--color-text-tertiary)" : "var(--color-text-primary)" }}>{FN(stock[i.id])} {i.unit}{enAlerta ? " ⚠" : ""}</span>
-            </div>;
-          })}
+          {INSUMOS.map(i => { const alerta = label.includes("Depósito") && (alertasStock[i.id]||0)>0 && (stock[i.id]||0)<=(alertasStock[i.id]||0);
+            return <div key={i.id} style={{ display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0",borderBottom:"0.5px solid var(--color-border-tertiary)" }}>
+              <span style={{ color:"var(--color-text-secondary)" }}>{i.emoji} {i.label}</span>
+              <span style={{ fontWeight:500,color:alerta?"#E24B4A":stock[i.id]===0?"var(--color-text-tertiary)":"var(--color-text-primary)" }}>{FN(stock[i.id])} {i.unit}{alerta?" ⚠":""}</span>
+            </div>; })}
         </Card>
       ))}
     </div>
-    <button onClick={() => setShow(p => !p)} style={{ width: "100%", padding: 11, borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "#185FA5", fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 12 }}>{show ? "Cancelar" : "+ Registrar compra / ingreso al depósito"}</button>
-    {show && <Card style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}>Nueva compra</div>
-      {INSUMOS.map(i => <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-        <span style={{ fontSize: 14, width: 20 }}>{i.emoji}</span>
-        <div style={{ flex: 1, fontSize: 13, color: "var(--color-text-secondary)" }}>{i.label}</div>
-        <input type="number" min="0" step={i.step} placeholder="0" value={form[i.id]} onChange={e => setForm(p => ({ ...p, [i.id]: e.target.value }))} style={{ width: 90, textAlign: "right", padding: "6px 8px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13 }} />
-        <span style={{ fontSize: 11, color: "var(--color-text-secondary)", width: 30 }}>{i.unit}</span>
+    <button onClick={() => setShow(p => !p)} style={{ width:"100%",padding:11,borderRadius:10,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"#185FA5",fontSize:13,fontWeight:500,cursor:"pointer",marginBottom:12 }}>{show?"Cancelar":"+ Registrar compra"}</button>
+    {show && <Card style={{ marginBottom:16 }}>
+      {INSUMOS.map(i => <div key={i.id} style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
+        <span style={{ fontSize:14,width:20 }}>{i.emoji}</span><div style={{ flex:1,fontSize:13,color:"var(--color-text-secondary)" }}>{i.label}</div>
+        <input type="number" min="0" step={i.step} placeholder="0" value={form[i.id]} onChange={e=>setForm(p=>({...p,[i.id]:e.target.value}))} style={{ width:90,textAlign:"right",padding:"6px 8px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13 }} />
+        <span style={{ fontSize:11,color:"var(--color-text-secondary)",width:30 }}>{i.unit}</span>
       </div>)}
-      <input placeholder="Nota (ej: compra mensual)" value={nota} onChange={e => setNota(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, marginTop: 4, marginBottom: 12, boxSizing: "border-box" }} />
-      <button onClick={add} disabled={saving} style={{ padding: "10px 20px", borderRadius: 9, border: "none", background: saving ? "#888" : "#185FA5", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>{saving ? "Guardando…" : "Registrar ingreso"}</button>
+      <input placeholder="Nota" value={nota} onChange={e=>setNota(e.target.value)} style={{ width:"100%",padding:"8px 10px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13,marginTop:4,marginBottom:12,boxSizing:"border-box" }} />
+      <button onClick={add} disabled={saving} style={{ padding:"10px 20px",borderRadius:9,border:"none",background:saving?"#888":"#185FA5",color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer" }}>{saving?"Guardando…":"Registrar ingreso"}</button>
     </Card>}
     <Sec mt={20}>Historial de ingresos</Sec>
-    {db.ingresosDepo.map(ing => <Card key={ing.id} style={{ marginBottom: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontSize: 13, fontWeight: 500 }}>{FF(ing.fecha)}</span>
-        {ing.nota && <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{ing.nota}</span>}
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{INSUMOS.filter(i => (ing.insumos[i.id] || 0) > 0).map(i => <Pill key={i.id}>{i.emoji} {FN(ing.insumos[i.id])} {i.unit}</Pill>)}</div>
+    {db.ingresosDepo.map(ing => <Card key={ing.id} style={{ marginBottom:8 }}>
+      <div style={{ display:"flex",justifyContent:"space-between",marginBottom:6 }}><span style={{ fontSize:13,fontWeight:500 }}>{FF(ing.fecha)}</span>{ing.nota&&<span style={{ fontSize:12,color:"var(--color-text-secondary)" }}>{ing.nota}</span>}</div>
+      <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>{INSUMOS.filter(i=>(ing.insumos[i.id]||0)>0).map(i=><Pill key={i.id}>{i.emoji} {FN(ing.insumos[i.id])} {i.unit}</Pill>)}</div>
     </Card>)}
   </div>;
 }
 
 function TabOp({ db, stockOp, stockDepo }) {
-  const [show, setShow]     = useState(false);
-  const [form, setForm]     = useState(emptyIns());
-  const [nota, setNota]     = useState("");
-  const [saving, setSaving] = useState(false);
-  const [ok, setOk]         = useState(false);
-  const [errs, setErrs]     = useState({});
-  const formNum     = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, parseFloat(v) || 0]));
-  const costoRetiro = costoIns(formNum, db.preciosIns);
+  const [show,setShow]=useState(false),[form,setForm]=useState(emptyIns()),[nota,setNota]=useState(""),[saving,setSaving]=useState(false),[ok,setOk]=useState(false),[errs,setErrs]=useState({});
+  const formNum=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,parseFloat(v)||0]));
+  const costoRetiro=costoIns(formNum,db.preciosIns);
+
+  // ✅ COMISIÓN DEL OPERADOR
+  const comisionPorServ = db.comisionOp || 0;
+  const totalServiciosGlobal = db.visitas.reduce((s, v) => s + serviciosDeVisita(v), 0);
+  const totalComision = totalServiciosGlobal * comisionPorServ;
 
   async function entregar() {
-    const ins = Object.fromEntries(Object.entries(form).map(([k, v]) => [k, parseFloat(v) || 0]));
-    const e = {}; INSUMOS.forEach(i => { if (ins[i.id] > (stockDepo[i.id] || 0)) e[i.id] = true; });
-    if (Object.keys(e).length) { setErrs(e); return; }
-    setErrs({}); setSaving(true);
-    await db.addEntregaOp({ insumos: ins, nota });
-    setForm(emptyIns()); setNota(""); setShow(false); setSaving(false); setOk(true); setTimeout(() => setOk(false), 2500);
+    const ins=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,parseFloat(v)||0]));
+    const e={}; INSUMOS.forEach(i=>{if(ins[i.id]>(stockDepo[i.id]||0))e[i.id]=true;});
+    if(Object.keys(e).length){setErrs(e);return;}
+    setErrs({});setSaving(true);await db.addEntregaOp({insumos:ins,nota});
+    setForm(emptyIns());setNota("");setShow(false);setSaving(false);setOk(true);setTimeout(()=>setOk(false),2500);
   }
-
-  // Consolidar entregas del mismo día para el historial
-  const entregasConsolidadas = consolidarEntragas(db.entregasOp);
-
+  const entregasConsolidadas=consolidarEntragas(db.entregasOp);
   return <div>
-    {ok && <div style={{ background: "#EAF3DE", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#27500A" }}>✓ Entrega registrada.</div>}
-    <Card style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: ".05em" }}>🚚 Insumos del operador ahora</div>
-      {INSUMOS.every(i => stockOp[i.id] === 0) ? <div style={{ fontSize: 12, color: "var(--color-text-secondary)", fontStyle: "italic" }}>Sin insumos actualmente.</div>
-        : <>
-          {INSUMOS.map(i => <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
-            <span style={{ color: "var(--color-text-secondary)" }}>{i.emoji} {i.label}</span>
-            <div style={{ display: "flex", gap: 10 }}>
-              <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>{P((stockOp[i.id] || 0) * (db.preciosIns[i.id] || 0))}</span>
-              <span style={{ fontWeight: 500, color: stockOp[i.id] === 0 ? "var(--color-text-tertiary)" : "var(--color-text-primary)" }}>{FN(stockOp[i.id])} {i.unit}</span>
-            </div>
-          </div>)}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 700, paddingTop: 8, marginTop: 4, borderTop: "0.5px solid var(--color-border-tertiary)" }}>
-            <span>Valor total en mano</span><span style={{ color: "#185FA5" }}>{P(costoIns(stockOp, db.preciosIns))}</span>
-          </div>
-        </>}
+    {ok&&<div style={{ background:"#EAF3DE",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13,color:"#27500A" }}>✓ Entrega registrada.</div>}
+
+    {/* Comisión del operador */}
+    {comisionPorServ > 0 && <div style={{ background:"#E6F1FB",borderRadius:12,padding:"14px 16px",marginBottom:16 }}>
+      <div style={{ fontSize:12,fontWeight:500,color:"#0C447C",marginBottom:10,textTransform:"uppercase",letterSpacing:".05em" }}>💰 Comisión del operador</div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8 }}>
+        <div style={{ background:"#fff",borderRadius:8,padding:"10px 12px",textAlign:"center" }}>
+          <div style={{ fontSize:10,color:"#185FA5" }}>Servicios totales</div>
+          <div style={{ fontSize:18,fontWeight:700,color:"#0C447C" }}>{totalServiciosGlobal.toLocaleString("es-AR")}</div>
+        </div>
+        <div style={{ background:"#fff",borderRadius:8,padding:"10px 12px",textAlign:"center" }}>
+          <div style={{ fontSize:10,color:"#185FA5" }}>Por servicio</div>
+          <div style={{ fontSize:18,fontWeight:700,color:"#0C447C" }}>{P(comisionPorServ)}</div>
+        </div>
+        <div style={{ background:"#fff",borderRadius:8,padding:"10px 12px",textAlign:"center" }}>
+          <div style={{ fontSize:10,color:"#185FA5" }}>Total a pagar</div>
+          <div style={{ fontSize:18,fontWeight:700,color:"#27500A" }}>{P(totalComision)}</div>
+        </div>
+      </div>
+    </div>}
+
+    <Card style={{ marginBottom:16 }}>
+      <div style={{ fontSize:11,fontWeight:500,color:"var(--color-text-secondary)",marginBottom:10,textTransform:"uppercase",letterSpacing:".05em" }}>🚚 Insumos del operador ahora</div>
+      {INSUMOS.every(i=>stockOp[i.id]===0)?<div style={{ fontSize:12,color:"var(--color-text-secondary)",fontStyle:"italic" }}>Sin insumos actualmente.</div>
+        :<>{INSUMOS.map(i=><div key={i.id} style={{ display:"flex",justifyContent:"space-between",fontSize:13,padding:"4px 0",borderBottom:"0.5px solid var(--color-border-tertiary)" }}>
+          <span style={{ color:"var(--color-text-secondary)" }}>{i.emoji} {i.label}</span>
+          <div style={{ display:"flex",gap:10 }}><span style={{ fontSize:11,color:"var(--color-text-tertiary)" }}>{P((stockOp[i.id]||0)*(db.preciosIns[i.id]||0))}</span><span style={{ fontWeight:500 }}>{FN(stockOp[i.id])} {i.unit}</span></div>
+        </div>)}
+        <div style={{ display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:700,paddingTop:8,marginTop:4,borderTop:"0.5px solid var(--color-border-tertiary)" }}>
+          <span>Valor total en mano</span><span style={{ color:"#185FA5" }}>{P(costoIns(stockOp,db.preciosIns))}</span>
+        </div></>}
     </Card>
-    <button onClick={() => setShow(p => !p)} style={{ width: "100%", padding: 11, borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "#185FA5", fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 12 }}>{show ? "Cancelar" : "+ Registrar entrega al operador"}</button>
-    {show && <Card style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>¿Qué le estás dando hoy?</div>
-      <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 12 }}>Descuenta del depósito → pasa al operador.</div>
-      {INSUMOS.map(i => <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-        <span style={{ fontSize: 14, width: 20 }}>{i.emoji}</span>
-        <div style={{ flex: 1 }}><div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{i.label}</div><div style={{ fontSize: 11, color: (stockDepo[i.id] || 0) === 0 ? "#A32D2D" : "var(--color-text-tertiary)" }}>Depósito: {FN(stockDepo[i.id] || 0)} {i.unit}</div></div>
-        <input type="number" min="0" step={i.step} placeholder="0" value={form[i.id]} onChange={e => setForm(p => ({ ...p, [i.id]: e.target.value }))} style={{ width: 90, textAlign: "right", padding: "6px 8px", borderRadius: 8, border: `0.5px solid ${errs[i.id] ? "var(--color-border-danger)" : "var(--color-border-secondary)"}`, background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13 }} />
-        <span style={{ fontSize: 11, color: "var(--color-text-secondary)", width: 30 }}>{i.unit}</span>
+    <button onClick={()=>setShow(p=>!p)} style={{ width:"100%",padding:11,borderRadius:10,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"#185FA5",fontSize:13,fontWeight:500,cursor:"pointer",marginBottom:12 }}>{show?"Cancelar":"+ Registrar entrega al operador"}</button>
+    {show&&<Card style={{ marginBottom:16 }}>
+      <div style={{ fontSize:13,fontWeight:500,marginBottom:12 }}>Descuenta del depósito → pasa al operador.</div>
+      {INSUMOS.map(i=><div key={i.id} style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
+        <span style={{ fontSize:14,width:20 }}>{i.emoji}</span>
+        <div style={{ flex:1 }}><div style={{ fontSize:13,color:"var(--color-text-secondary)" }}>{i.label}</div><div style={{ fontSize:11,color:(stockDepo[i.id]||0)===0?"#A32D2D":"var(--color-text-tertiary)" }}>Depósito: {FN(stockDepo[i.id]||0)} {i.unit}</div></div>
+        <input type="number" min="0" step={i.step} placeholder="0" value={form[i.id]} onChange={e=>setForm(p=>({...p,[i.id]:e.target.value}))} style={{ width:90,textAlign:"right",padding:"6px 8px",borderRadius:8,border:`0.5px solid ${errs[i.id]?"var(--color-border-danger)":"var(--color-border-secondary)"}`,background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13 }} />
+        <span style={{ fontSize:11,color:"var(--color-text-secondary)",width:30 }}>{i.unit}</span>
       </div>)}
-      {costoRetiro > 0 && <div style={{ background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", margin: "8px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 12, color: "#0C447C" }}>Costo de este retiro</span>
-        <span style={{ fontSize: 15, fontWeight: 700, color: "#0C447C" }}>{P(costoRetiro)}</span>
+      {costoRetiro>0&&<div style={{ background:"#E6F1FB",borderRadius:8,padding:"8px 12px",margin:"8px 0",display:"flex",justifyContent:"space-between" }}>
+        <span style={{ fontSize:12,color:"#0C447C" }}>Costo de este retiro</span><span style={{ fontSize:15,fontWeight:700,color:"#0C447C" }}>{P(costoRetiro)}</span>
       </div>}
-      {Object.keys(errs).length > 0 && <div style={{ fontSize: 12, color: "#A32D2D", marginBottom: 10 }}>Algunas cantidades superan el stock disponible.</div>}
-      <input placeholder="Nota opcional" value={nota} onChange={e => setNota(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, marginTop: 4, marginBottom: 12, boxSizing: "border-box" }} />
-      <button onClick={entregar} disabled={saving} style={{ padding: "10px 20px", borderRadius: 9, border: "none", background: saving ? "#888" : "#185FA5", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>{saving ? "Guardando…" : "Confirmar entrega"}</button>
+      {Object.keys(errs).length>0&&<div style={{ fontSize:12,color:"#A32D2D",marginBottom:10 }}>Algunas cantidades superan el stock disponible.</div>}
+      <input placeholder="Nota opcional" value={nota} onChange={e=>setNota(e.target.value)} style={{ width:"100%",padding:"8px 10px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13,marginTop:4,marginBottom:12,boxSizing:"border-box" }} />
+      <button onClick={entregar} disabled={saving} style={{ padding:"10px 20px",borderRadius:9,border:"none",background:saving?"#888":"#185FA5",color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer" }}>{saving?"Guardando…":"Confirmar entrega"}</button>
     </Card>}
     <Sec mt={20}>Historial entregas al operador</Sec>
-    {entregasConsolidadas.map((e, idx) => {
-      const costoE = costoIns(e.insumos, db.preciosIns);
-      return <Card key={idx} style={{ marginBottom: 8 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-          <span style={{ fontSize: 13, fontWeight: 500 }}>{FF(e.fecha)}</span>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            {e.nota && <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{e.nota}</span>}
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#185FA5" }}>{P(costoE)}</span>
-          </div>
+    {entregasConsolidadas.map((e,idx)=>{const costoE=costoIns(e.insumos,db.preciosIns);
+      return <Card key={idx} style={{ marginBottom:8 }}>
+        <div style={{ display:"flex",justifyContent:"space-between",marginBottom:6 }}>
+          <span style={{ fontSize:13,fontWeight:500 }}>{FF(e.fecha)}</span>
+          <div style={{ display:"flex",gap:10,alignItems:"center" }}>{e.nota&&<span style={{ fontSize:12,color:"var(--color-text-secondary)" }}>{e.nota}</span>}<span style={{ fontSize:13,fontWeight:700,color:"#185FA5" }}>{P(costoE)}</span></div>
         </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{INSUMOS.filter(i => (e.insumos[i.id] || 0) > 0).map(i => <Pill key={i.id}>{i.emoji} {FN(e.insumos[i.id])} {i.unit}</Pill>)}</div>
-      </Card>;
-    })}
+        <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>{INSUMOS.filter(i=>(e.insumos[i.id]||0)>0).map(i=><Pill key={i.id}>{i.emoji} {FN(e.insumos[i.id])} {i.unit}</Pill>)}</div>
+      </Card>;})}
   </div>;
 }
 
 function TabCli({ db, onSelect, diasAlerta }) {
-  return <div>
-    <Sec>Todos los clientes</Sec>
+  return <div><Sec>Todos los clientes</Sec>
     {db.clientes.map(c => {
-      const vs  = db.visitas.filter(v => v.clienteId === c.id);
-      const cbs = db.cobros.filter(co => co.clienteId === c.id);
-      const sR  = vs.reduce((s, v) => s + serviciosDeVisita(v), 0);
-      const fat = Math.max(c.minimo, sR) * db.precioServ;
-      const cob = cbs.reduce((s, c) => s + c.monto, 0);
-      const uv  = vs[0];
-      const dias = uv ? diasDesde(uv.fecha) : null;
-      const enAlerta = dias === null || dias >= diasAlerta;
-      const semaforo = dias === null ? "🔴" : dias >= diasAlerta ? "🔴" : dias >= Math.floor(diasAlerta * 0.6) ? "🟡" : "🟢";
-      const { bg, c: col } = avc(c.id);
-      return <div key={c.id} onClick={() => onSelect(c)} style={{ background: "var(--color-background-primary)", borderRadius: 12, border: `0.5px solid ${enAlerta ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "12px 14px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
-        onMouseEnter={e => e.currentTarget.style.borderColor = "#378ADD"}
-        onMouseLeave={e => e.currentTarget.style.borderColor = enAlerta ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}>
+      const vs=db.visitas.filter(v=>v.clienteId===c.id),cbs=db.cobros.filter(co=>co.clienteId===c.id);
+      const sR=vs.reduce((s,v)=>s+serviciosDeVisita(v),0),fat=Math.max(c.minimo,sR)*db.precioServ,cob=cbs.reduce((s,c)=>s+c.monto,0);
+      const uv=vs[0],dias=uv?diasDesde(uv.fecha):null,enAlerta=dias===null||dias>=diasAlerta;
+      const semaforo=dias===null?"🔴":dias>=diasAlerta?"🔴":dias>=Math.floor(diasAlerta*0.6)?"🟡":"🟢";
+      const {bg,c:col}=avc(c.id);
+      return <div key={c.id} onClick={()=>onSelect(c)} style={{ background:"var(--color-background-primary)",borderRadius:12,border:`0.5px solid ${enAlerta?"var(--color-border-danger)":"var(--color-border-tertiary)"}`,padding:"12px 14px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:12 }}
+        onMouseEnter={e=>e.currentTarget.style.borderColor="#378ADD"} onMouseLeave={e=>e.currentTarget.style.borderColor=enAlerta?"var(--color-border-danger)":"var(--color-border-tertiary)"}>
         <Av nombre={c.nombre} bg={bg} c={col} size={40} />
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{c.nombre}</div>
-          <div style={{ fontSize: 12, color: enAlerta ? "#A32D2D" : "var(--color-text-secondary)", marginTop: 2 }}>
-            {semaforo} {dias === null ? "Sin visitas" : `Última visita ${DA(uv.fecha)}`} · {c.maquinas} máq.
-          </div>
-        </div>
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#185FA5" }}>{P(fat)}</div>
-          {(fat - cob) > 0 && <div style={{ fontSize: 11, color: "#A32D2D" }}>saldo {P(fat - cob)}</div>}
-        </div>
+        <div style={{ flex:1 }}><div style={{ fontSize:14,fontWeight:500 }}>{c.nombre}</div><div style={{ fontSize:12,color:enAlerta?"#A32D2D":"var(--color-text-secondary)",marginTop:2 }}>{semaforo} {dias===null?"Sin visitas":`Última visita ${DA(uv.fecha)}`} · {c.maquinas} máq.</div></div>
+        <div style={{ textAlign:"right" }}><div style={{ fontSize:13,fontWeight:600,color:"#185FA5" }}>{P(fat)}</div>{(fat-cob)>0&&<div style={{ fontSize:11,color:"#A32D2D" }}>saldo {P(fat-cob)}</div>}</div>
       </div>;
     })}
   </div>;
 }
 
 function DetalleCli({ cliente, db, onBack }) {
-  const vs   = db.visitas.filter(v => v.clienteId === cliente.id);
-  const cobs = db.cobros.filter(c => c.clienteId === cliente.id);
-  const sR   = vs.reduce((s, v) => s + serviciosDeVisita(v), 0);
-  const sF   = Math.max(cliente.minimo, sR), fat = sF * db.precioServ;
-  const cI   = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
-  const cob  = cobs.reduce((s, c) => s + c.monto, 0), gan = fat - cI;
-  const insT = sumar(vs);
-  const totalCafes   = sR;
-  const costoPorCafe = totalCafes > 0 ? cI / totalCafes : null;
-  const [dTab, setDTab] = useState("visitas");
-
+  const vs=db.visitas.filter(v=>v.clienteId===cliente.id),cobs=db.cobros.filter(c=>c.clienteId===cliente.id);
+  const sR=vs.reduce((s,v)=>s+serviciosDeVisita(v),0),sF=Math.max(cliente.minimo,sR),fat=sF*db.precioServ;
+  const cI=vs.reduce((s,v)=>s+costoIns(v.insumos,db.preciosIns),0),cob=cobs.reduce((s,c)=>s+c.monto,0),gan=fat-cI;
+  const insT=sumar(vs),costoPorCafe=sR>0?cI/sR:null;
+  const [dTab,setDTab]=useState("visitas");
   return <div>
-    <button onClick={onBack} style={{ fontSize: 13, color: "#185FA5", background: "none", border: "none", cursor: "pointer", marginBottom: 14, padding: 0 }}>← Volver</button>
-    <Card style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 16, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 2 }}>{cliente.nombre}</div>
-      <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 12 }}>{cliente.direccion} · {cliente.maquinas} máquinas · mínimo {cliente.minimo}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8, marginBottom: 12 }}>
+    <button onClick={onBack} style={{ fontSize:13,color:"#185FA5",background:"none",border:"none",cursor:"pointer",marginBottom:14,padding:0 }}>← Volver</button>
+    <Card style={{ marginBottom:16 }}>
+      <div style={{ fontSize:16,fontWeight:600,marginBottom:2 }}>{cliente.nombre}</div>
+      <div style={{ fontSize:12,color:"var(--color-text-secondary)",marginBottom:12 }}>{cliente.direccion} · {cliente.maquinas} máquinas · mínimo {cliente.minimo}</div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8,marginBottom:12 }}>
         <Met label="Facturación" value={P(fat)} sub={`${sF} serv.`} />
         <Met label="Cobrado"     value={P(cob)} sub={`${cobs.length} pagos`} />
-        <Met label="Saldo"       value={P(fat - cob)} sub="" warn={(fat - cob) > 0} />
-        <Met label="Ganancia"    value={P(gan)} sub={`${fat > 0 ? ((gan / fat) * 100).toFixed(1) : 0}%`} warn={gan < 0} />
+        <Met label="Saldo"       value={P(fat-cob)} sub="" warn={(fat-cob)>0} />
+        <Met label="Ganancia"    value={P(gan)} sub={`${fat>0?((gan/fat)*100).toFixed(1):0}%`} warn={gan<0} />
       </div>
-      {costoPorCafe !== null && <div style={{ background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div><div style={{ fontSize: 12, fontWeight: 500, color: "#0C447C" }}>☕ Costo por café servido</div><div style={{ fontSize: 11, color: "#185FA5" }}>{totalCafes.toLocaleString()} servicios</div></div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "#0C447C" }}>{P(costoPorCafe)}</div>
+      {costoPorCafe!==null&&<div style={{ background:"#E6F1FB",borderRadius:8,padding:"8px 12px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+        <div><div style={{ fontSize:12,fontWeight:500,color:"#0C447C" }}>☕ Costo por café servido</div><div style={{ fontSize:11,color:"#185FA5" }}>{sR.toLocaleString()} servicios</div></div>
+        <div style={{ fontSize:20,fontWeight:700,color:"#0C447C" }}>{P(costoPorCafe)}</div>
       </div>}
-      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Total insumos recibidos</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{INSUMOS.filter(i => insT[i.id] > 0).map(i => <Pill key={i.id}>{i.emoji} {FN(insT[i.id])} {i.unit}</Pill>)}</div>
+      <div style={{ fontSize:11,fontWeight:500,color:"var(--color-text-secondary)",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em" }}>Total insumos recibidos</div>
+      <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>{INSUMOS.filter(i=>insT[i.id]>0).map(i=><Pill key={i.id}>{i.emoji} {FN(insT[i.id])} {i.unit}</Pill>)}</div>
     </Card>
-    <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 14 }}>
-      {[{ id: "visitas", l: `Visitas (${vs.length})` }, { id: "cobros", l: `Cobros (${cobs.length})` }].map(t => (
-        <button key={t.id} onClick={() => setDTab(t.id)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: dTab === t.id ? 500 : 400, background: dTab === t.id ? "var(--color-background-primary)" : "transparent", color: dTab === t.id ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>{t.l}</button>
+    <div style={{ display:"flex",background:"var(--color-background-secondary)",borderRadius:10,padding:3,marginBottom:14 }}>
+      {[{id:"visitas",l:`Visitas (${vs.length})`},{id:"cobros",l:`Cobros (${cobs.length})`}].map(t=>(
+        <button key={t.id} onClick={()=>setDTab(t.id)} style={{ flex:1,padding:"8px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:dTab===t.id?500:400,background:dTab===t.id?"var(--color-background-primary)":"transparent",color:dTab===t.id?"var(--color-text-primary)":"var(--color-text-secondary)" }}>{t.l}</button>
       ))}
     </div>
-    {dTab === "visitas" && <>
-      {vs.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Sin visitas.</div>}
-      {vs.map(v => {
-        const cafes = serviciosDeVisita(v);
-        const esManual = v.serviciosManuales > 0;
-        const cV = costoIns(v.insumos, db.preciosIns);
-        const cpC = cafes > 0 ? cV / cafes : null;
-        return <Card key={v.id} style={{ marginBottom: 8 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 500 }}>{FF(v.fecha)} · {v.hora}</div>
-              {cafes > 0 && <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>
-                {esManual ? "Manual:" : `${v.contadorAnterior?.toLocaleString()} →  ${v.contador?.toLocaleString()}:`} <span style={{ color: "#185FA5", fontWeight: 500 }}>{cafes.toLocaleString()} servicios</span>
-                {cpC && <span style={{ color: "#0C447C", fontWeight: 500 }}> · {P(cpC)}/café</span>}
+    {dTab==="visitas"&&<>
+      {vs.length===0&&<div style={{ fontSize:13,color:"var(--color-text-secondary)" }}>Sin visitas.</div>}
+      {vs.map(v=>{const cafes=serviciosDeVisita(v),esManual=v.serviciosManuales>0,cV=costoIns(v.insumos,db.preciosIns),cpC=cafes>0?cV/cafes:null;
+        return <Card key={v.id} style={{ marginBottom:8 }}>
+          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
+            <div><div style={{ fontSize:13,fontWeight:500 }}>{FF(v.fecha)} · {v.hora}</div>
+              {cafes>0&&<div style={{ fontSize:11,color:"var(--color-text-secondary)",marginTop:2 }}>
+                {esManual?"Manual:":`${v.contadorAnterior?.toLocaleString()} → ${v.contador?.toLocaleString()}:`} <span style={{ color:"#185FA5",fontWeight:500 }}>{cafes.toLocaleString()} servicios</span>
+                {cpC&&<span style={{ color:"#0C447C",fontWeight:500 }}> · {P(cpC)}/café</span>}
               </div>}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#185FA5" }}>{P(cV)}</span>
-              {v.falla && <span style={{ fontSize: 10, background: "#FCEBEB", color: "#A32D2D", padding: "2px 6px", borderRadius: 20 }}>Falla</span>}
+            <div style={{ display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3 }}>
+              <span style={{ fontSize:14,fontWeight:600,color:"#185FA5" }}>{P(cV)}</span>
+              {v.falla&&<span style={{ fontSize:10,background:"#FCEBEB",color:"#A32D2D",padding:"2px 6px",borderRadius:20 }}>Falla</span>}
             </div>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{INSUMOS.filter(i => (v.insumos[i.id] || 0) > 0).map(i => <Pill key={i.id}>{i.emoji} {FN(v.insumos[i.id])} {i.unit}</Pill>)}</div>
-          {v.observaciones && <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginTop: 8, fontStyle: "italic" }}>{v.observaciones}</div>}
-          {v.falla && v.detalleFalla && <div style={{ fontSize: 12, color: "#A32D2D", marginTop: 6, background: "#FCEBEB", padding: "6px 10px", borderRadius: 8 }}>{v.detalleFalla}</div>}
-        </Card>;
-      })}
+          <div style={{ display:"flex",flexWrap:"wrap",gap:5 }}>{INSUMOS.filter(i=>(v.insumos[i.id]||0)>0).map(i=><Pill key={i.id}>{i.emoji} {FN(v.insumos[i.id])} {i.unit}</Pill>)}</div>
+          {v.observaciones&&<div style={{ fontSize:12,color:"var(--color-text-secondary)",marginTop:8,fontStyle:"italic" }}>{v.observaciones}</div>}
+          {v.falla&&v.detalleFalla&&<div style={{ fontSize:12,color:"#A32D2D",marginTop:6,background:"#FCEBEB",padding:"6px 10px",borderRadius:8 }}>{v.detalleFalla}</div>}
+        </Card>;})}
     </>}
-    {dTab === "cobros" && <>
-      {cobs.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Sin cobros registrados.</div>}
-      {cobs.map(c => { const mp = MEDIOS_PAGO.find(m => m.id === c.medio);
-        return <Card key={c.id} style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 22 }}>{mp?.emoji}</span>
-          <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 700, color: "#27500A" }}>{P(c.monto)}</div><div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{mp?.label} · {FF(c.fecha)}{c.nota ? ` · ${c.nota}` : ""}</div></div>
-        </Card>; })}
+    {dTab==="cobros"&&<>
+      {cobs.length===0&&<div style={{ fontSize:13,color:"var(--color-text-secondary)" }}>Sin cobros registrados.</div>}
+      {cobs.map(c=>{const mp=MEDIOS_PAGO.find(m=>m.id===c.medio);
+        return <Card key={c.id} style={{ marginBottom:8,display:"flex",alignItems:"center",gap:12 }}>
+          <span style={{ fontSize:22 }}>{mp?.emoji}</span>
+          <div style={{ flex:1 }}><div style={{ fontSize:15,fontWeight:700,color:"#27500A" }}>{P(c.monto)}</div><div style={{ fontSize:12,color:"var(--color-text-secondary)" }}>{mp?.label} · {FF(c.fecha)}{c.nota?` · ${c.nota}`:""}</div></div>
+        </Card>;})}
     </>}
   </div>;
 }
 
 function TabCfg({ db }) {
-  const [nuevo, setNuevo]           = useState({ nombre: "", direccion: "", maquinas: 1, minimo: 250 });
-  const [editando, setEditando]     = useState(null);
-  const [confirmar, setConfirmar]   = useState(null);
-  const [localPrecios, setLocalPrecios] = useState(db.preciosIns);
-  const [localPxServ, setLocalPxServ]   = useState(db.precioServ);
-  const [localAlertas, setLocalAlertas] = useState(db.alertasStock || ALERTAS_DEFAULT);
-  const [localDias, setLocalDias]       = useState(db.diasAlerta || DIAS_ALERTA_DEF);
-  const [saving, setSaving]         = useState(false);
-  const [saved, setSaved]           = useState(false);
+  const [nuevo,setNuevo]=useState({nombre:"",direccion:"",maquinas:1,minimo:250});
+  const [editando,setEditando]=useState(null),[confirmar,setConfirmar]=useState(null);
+  const [localPrecios,setLocalPrecios]=useState(db.preciosIns),[localPxServ,setLocalPxServ]=useState(db.precioServ);
+  const [localAlertas,setLocalAlertas]=useState(db.alertasStock||ALERTAS_DEFAULT),[localDias,setLocalDias]=useState(db.diasAlerta||DIAS_ALERTA_DEF);
+  const [localComision,setLocalComision]=useState(db.comisionOp||COMISION_DEF);
+  const [saving,setSaving]=useState(false),[saved,setSaved]=useState(false);
 
-  async function guardarConfig() {
-    setSaving(true); await db.saveConfig(localPxServ, localPrecios, localAlertas, localDias); setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
-  }
-  async function agregar() {
-    if (!nuevo.nombre.trim()) return;
-    await db.addCliente({ ...nuevo, maquinas: parseInt(nuevo.maquinas) || 1, minimo: parseInt(nuevo.minimo) || 250 });
-    setNuevo({ nombre: "", direccion: "", maquinas: 1, minimo: 250 });
-  }
-  async function guardarEdicion() {
-    await db.updateCliente({ ...editando, maquinas: parseInt(editando.maquinas) || 1, minimo: parseInt(editando.minimo) || 0 });
-    setEditando(null);
-    // NO redirige — queda en la lista
-  }
-  async function confirmarEliminar() {
-    await db.deleteCliente(confirmar.cliente.id);
-    setConfirmar(null);
-    setEditando(null);
-    // NO redirige — queda en la lista
-  }
+  async function guardarConfig(){setSaving(true);await db.saveConfig(localPxServ,localPrecios,localAlertas,localDias,localComision);setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2000);}
+  async function agregar(){if(!nuevo.nombre.trim())return;await db.addCliente({...nuevo,maquinas:parseInt(nuevo.maquinas)||1,minimo:parseInt(nuevo.minimo)||250});setNuevo({nombre:"",direccion:"",maquinas:1,minimo:250});}
+  async function guardarEdicion(){await db.updateCliente({...editando,maquinas:parseInt(editando.maquinas)||1,minimo:parseInt(editando.minimo)||0});setEditando(null);}
+  async function confirmarEliminar(){await db.deleteCliente(confirmar.cliente.id);setConfirmar(null);setEditando(null);}
 
   return <div>
-    {confirmar && <ConfirmModal title={`Eliminar "${confirmar.cliente.nombre}"`} msg={confirmar.tieneVisitas ? "Este cliente tiene visitas registradas. Al eliminarlo no se borran los registros históricos." : "Este cliente no tiene registros. Se eliminará definitivamente."} onConfirm={confirmarEliminar} onCancel={() => setConfirmar(null)} />}
-
+    {confirmar&&<ConfirmModal title={`Eliminar "${confirmar.cliente.nombre}"`} msg={confirmar.tieneVisitas?"Este cliente tiene visitas registradas.":"Este cliente no tiene registros."} onConfirm={confirmarEliminar} onCancel={()=>setConfirmar(null)} />}
     <Sec>Precio por servicio</Sec>
-    <Card style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
-      <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>Precio unitario</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Igual para todos los clientes</div></div>
-      <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>$</span>
-      <input type="number" value={localPxServ} onChange={e => setLocalPxServ(parseFloat(e.target.value) || 0)} style={{ width: 100, textAlign: "right", padding: 8, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 16, fontWeight: 600 }} />
+    <Card style={{ marginBottom:20,display:"flex",alignItems:"center",gap:12 }}>
+      <div style={{ flex:1 }}><div style={{ fontSize:13,fontWeight:500 }}>Precio unitario</div><div style={{ fontSize:11,color:"var(--color-text-secondary)" }}>Igual para todos los clientes</div></div>
+      <span style={{ fontSize:13,color:"var(--color-text-secondary)" }}>$</span>
+      <input type="number" value={localPxServ} onChange={e=>setLocalPxServ(parseFloat(e.target.value)||0)} style={{ width:100,textAlign:"right",padding:8,borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:16,fontWeight:600 }} />
+    </Card>
+
+    {/* ✅ COMISIÓN DEL OPERADOR */}
+    <Sec>Comisión del operador</Sec>
+    <Card style={{ marginBottom:20,display:"flex",alignItems:"center",gap:12 }}>
+      <div style={{ flex:1 }}><div style={{ fontSize:13,fontWeight:500 }}>Monto por servicio vendido</div><div style={{ fontSize:11,color:"var(--color-text-secondary)" }}>Se calcula sobre todos los servicios reales</div></div>
+      <span style={{ fontSize:13,color:"var(--color-text-secondary)" }}>$</span>
+      <input type="number" min="0" value={localComision} onChange={e=>setLocalComision(parseFloat(e.target.value)||0)} style={{ width:100,textAlign:"right",padding:8,borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:16,fontWeight:600 }} />
     </Card>
 
     <Sec>Alerta de visitas pendientes</Sec>
-    <Card style={{ marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
-      <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>Días sin visita para alertar</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Alerta roja si hace más de N días</div></div>
-      <input type="number" min="1" value={localDias} onChange={e => setLocalDias(parseInt(e.target.value) || 1)} style={{ width: 70, textAlign: "right", padding: 8, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 16, fontWeight: 600 }} />
-      <span style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>días</span>
+    <Card style={{ marginBottom:20,display:"flex",alignItems:"center",gap:12 }}>
+      <div style={{ flex:1 }}><div style={{ fontSize:13,fontWeight:500 }}>Días sin visita para alertar</div><div style={{ fontSize:11,color:"var(--color-text-secondary)" }}>Alerta roja si hace más de N días</div></div>
+      <input type="number" min="1" value={localDias} onChange={e=>setLocalDias(parseInt(e.target.value)||1)} style={{ width:70,textAlign:"right",padding:8,borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:16,fontWeight:600 }} />
+      <span style={{ fontSize:12,color:"var(--color-text-secondary)" }}>días</span>
     </Card>
-
     <Sec>Alertas de stock mínimo</Sec>
-    <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 10 }}>Alerta si el depósito baja de este número. Poné 0 para desactivar.</div>
-    <Card style={{ marginBottom: 20 }}>
-      {INSUMOS.map(i => <div key={i.id} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-        <span style={{ fontSize: 16 }}>{i.emoji}</span>
-        <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{i.label}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Alerta si baja de N {i.unit}</div></div>
-        <input type="number" min="0" step={i.step} value={localAlertas[i.id] || 0} onChange={e => setLocalAlertas(p => ({ ...p, [i.id]: parseFloat(e.target.value) || 0 }))}
-          style={{ width: 90, textAlign: "right", padding: "6px 8px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13 }} />
-        <span style={{ fontSize: 11, color: "var(--color-text-secondary)", width: 30 }}>{i.unit}</span>
+    <Card style={{ marginBottom:20 }}>
+      {INSUMOS.map(i=><div key={i.id} style={{ display:"flex",alignItems:"center",gap:12,marginBottom:10 }}>
+        <span style={{ fontSize:16 }}>{i.emoji}</span>
+        <div style={{ flex:1 }}><div style={{ fontSize:13,fontWeight:500 }}>{i.label}</div><div style={{ fontSize:11,color:"var(--color-text-secondary)" }}>Alerta si baja de N {i.unit}</div></div>
+        <input type="number" min="0" step={i.step} value={localAlertas[i.id]||0} onChange={e=>setLocalAlertas(p=>({...p,[i.id]:parseFloat(e.target.value)||0}))} style={{ width:90,textAlign:"right",padding:"6px 8px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13 }} />
+        <span style={{ fontSize:11,color:"var(--color-text-secondary)",width:30 }}>{i.unit}</span>
       </div>)}
     </Card>
-
     <Sec>Clientes ({db.clientes.length})</Sec>
-    {db.clientes.map(c => (
-      editando?.id === c.id
-        ? <Card key={c.id} style={{ marginBottom: 8, border: "1.5px solid var(--color-border-info)" }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 10 }}>Editando cliente</div>
-          {[["Nombre", "nombre"], ["Dirección", "direccion"]].map(([ph, k]) => <input key={k} placeholder={ph} value={editando[k] || ""} onChange={e => setEditando(p => ({ ...p, [k]: e.target.value }))} style={{ width: "100%", marginBottom: 8, padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />)}
-          <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-            {[["Máquinas", "maquinas"], ["Mínimo", "minimo"]].map(([label, k]) => <div key={k} style={{ flex: 1 }}><div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>{label}</div><input type="number" min="1" value={editando[k] || ""} onChange={e => setEditando(p => ({ ...p, [k]: e.target.value }))} style={{ width: "100%", padding: "6px 8px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} /></div>)}
+    {db.clientes.map(c=>(
+      editando?.id===c.id
+        ?<Card key={c.id} style={{ marginBottom:8,border:"1.5px solid var(--color-border-info)" }}>
+          <div style={{ fontSize:12,fontWeight:500,color:"var(--color-text-secondary)",marginBottom:10 }}>Editando cliente</div>
+          {[["Nombre","nombre"],["Dirección","direccion"]].map(([ph,k])=><input key={k} placeholder={ph} value={editando[k]||""} onChange={e=>setEditando(p=>({...p,[k]:e.target.value}))} style={{ width:"100%",marginBottom:8,padding:"8px 10px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13,boxSizing:"border-box" }} />)}
+          <div style={{ display:"flex",gap:12,marginBottom:12 }}>
+            {[["Máquinas","maquinas"],["Mínimo","minimo"]].map(([label,k])=><div key={k} style={{ flex:1 }}><div style={{ fontSize:11,color:"var(--color-text-secondary)",marginBottom:4 }}>{label}</div><input type="number" min="1" value={editando[k]||""} onChange={e=>setEditando(p=>({...p,[k]:e.target.value}))} style={{ width:"100%",padding:"6px 8px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13,boxSizing:"border-box" }} /></div>)}
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={guardarEdicion} style={{ flex: 1, padding: 9, borderRadius: 9, border: "none", background: "#185FA5", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>Guardar</button>
-            <button onClick={() => setEditando(null)} style={{ padding: "9px 14px", borderRadius: 9, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
-            <button onClick={() => setConfirmar({ cliente: c, tieneVisitas: db.visitas.some(v => v.clienteId === c.id) })} style={{ padding: "9px 14px", borderRadius: 9, border: "none", background: "#FCEBEB", color: "#A32D2D", fontSize: 13, cursor: "pointer" }}>Eliminar</button>
+          <div style={{ display:"flex",gap:8 }}>
+            <button onClick={guardarEdicion} style={{ flex:1,padding:9,borderRadius:9,border:"none",background:"#185FA5",color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer" }}>Guardar</button>
+            <button onClick={()=>setEditando(null)} style={{ padding:"9px 14px",borderRadius:9,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-secondary)",color:"var(--color-text-secondary)",fontSize:13,cursor:"pointer" }}>Cancelar</button>
+            <button onClick={()=>setConfirmar({cliente:c,tieneVisitas:db.visitas.some(v=>v.clienteId===c.id)})} style={{ padding:"9px 14px",borderRadius:9,border:"none",background:"#FCEBEB",color:"#A32D2D",fontSize:13,cursor:"pointer" }}>Eliminar</button>
           </div>
         </Card>
-        : <div key={c.id} style={{ background: "var(--color-background-primary)", borderRadius: 10, border: "0.5px solid var(--color-border-tertiary)", padding: "10px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{c.nombre}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{c.direccion} · {c.maquinas} máq. · mín {c.minimo}</div></div>
-          <button onClick={() => setEditando({ ...c })} style={{ padding: "5px 12px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", fontSize: 12, cursor: "pointer" }}>Editar</button>
+        :<div key={c.id} style={{ background:"var(--color-background-primary)",borderRadius:10,border:"0.5px solid var(--color-border-tertiary)",padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12 }}>
+          <div style={{ flex:1 }}><div style={{ fontSize:13,fontWeight:500 }}>{c.nombre}</div><div style={{ fontSize:11,color:"var(--color-text-secondary)" }}>{c.direccion} · {c.maquinas} máq. · mín {c.minimo}</div></div>
+          <button onClick={()=>setEditando({...c})} style={{ padding:"5px 12px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-secondary)",color:"var(--color-text-secondary)",fontSize:12,cursor:"pointer" }}>Editar</button>
         </div>
     ))}
-
     <Sec mt={20}>Agregar cliente</Sec>
-    <Card style={{ marginBottom: 20 }}>
-      {[["Nombre", "nombre"], ["Dirección", "direccion"]].map(([ph, k]) => <input key={k} placeholder={ph} value={nuevo[k]} onChange={e => setNuevo(p => ({ ...p, [k]: e.target.value }))} style={{ width: "100%", marginBottom: 8, padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />)}
-      <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-        {[["Máquinas", "maquinas"], ["Mínimo pactado", "minimo"]].map(([label, k]) => <div key={k} style={{ flex: 1 }}><div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>{label}</div><input type="number" min="0" value={nuevo[k]} onChange={e => setNuevo(p => ({ ...p, [k]: e.target.value }))} style={{ width: "100%", padding: "6px 8px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} /></div>)}
+    <Card style={{ marginBottom:20 }}>
+      {[["Nombre","nombre"],["Dirección","direccion"]].map(([ph,k])=><input key={k} placeholder={ph} value={nuevo[k]} onChange={e=>setNuevo(p=>({...p,[k]:e.target.value}))} style={{ width:"100%",marginBottom:8,padding:"8px 10px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13,boxSizing:"border-box" }} />)}
+      <div style={{ display:"flex",gap:12,marginBottom:12 }}>
+        {[["Máquinas","maquinas"],["Mínimo pactado","minimo"]].map(([label,k])=><div key={k} style={{ flex:1 }}><div style={{ fontSize:11,color:"var(--color-text-secondary)",marginBottom:4 }}>{label}</div><input type="number" min="0" value={nuevo[k]} onChange={e=>setNuevo(p=>({...p,[k]:e.target.value}))} style={{ width:"100%",padding:"6px 8px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13,boxSizing:"border-box" }} /></div>)}
       </div>
-      <button onClick={agregar} style={{ padding: "9px 18px", borderRadius: 9, border: "none", background: "#185FA5", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>+ Agregar cliente</button>
+      <button onClick={agregar} style={{ padding:"9px 18px",borderRadius:9,border:"none",background:"#185FA5",color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer" }}>+ Agregar cliente</button>
     </Card>
-
     <Sec>Precio de insumos</Sec>
-    {INSUMOS.map(i => <div key={i.id} style={{ background: "var(--color-background-primary)", borderRadius: 10, border: "0.5px solid var(--color-border-tertiary)", padding: "10px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
-      <span style={{ fontSize: 16 }}>{i.emoji}</span>
-      <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>{i.label}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>por {i.unit}</div></div>
-      <span style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>$</span>
-      <input type="number" value={localPrecios[i.id] || 0} onChange={e => setLocalPrecios(p => ({ ...p, [i.id]: parseFloat(e.target.value) || 0 }))} style={{ width: 90, textAlign: "right", padding: "6px 8px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13 }} />
+    {INSUMOS.map(i=><div key={i.id} style={{ background:"var(--color-background-primary)",borderRadius:10,border:"0.5px solid var(--color-border-tertiary)",padding:"10px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12 }}>
+      <span style={{ fontSize:16 }}>{i.emoji}</span>
+      <div style={{ flex:1 }}><div style={{ fontSize:13,fontWeight:500 }}>{i.label}</div><div style={{ fontSize:11,color:"var(--color-text-secondary)" }}>por {i.unit}</div></div>
+      <span style={{ fontSize:13,color:"var(--color-text-secondary)" }}>$</span>
+      <input type="number" value={localPrecios[i.id]||0} onChange={e=>setLocalPrecios(p=>({...p,[i.id]:parseFloat(e.target.value)||0}))} style={{ width:90,textAlign:"right",padding:"6px 8px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13 }} />
     </div>)}
-    <button onClick={guardarConfig} disabled={saving} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: saved ? "#1D9E75" : saving ? "#888" : "#185FA5", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer", marginBottom: 24 }}>{saved ? "✓ Guardado" : saving ? "Guardando…" : "Guardar cambios"}</button>
+    <button onClick={guardarConfig} disabled={saving} style={{ padding:"10px 20px",borderRadius:10,border:"none",background:saved?"#1D9E75":saving?"#888":"#185FA5",color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer",marginBottom:24 }}>{saved?"✓ Guardado":saving?"Guardando…":"Guardar cambios"}</button>
   </div>;
 }
