@@ -6,6 +6,7 @@ const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 const sb = createClient(SUPA_URL, SUPA_KEY);
 const CREDS = { operador: "cafe2026", admin: "epichon" };
 const SESSION_KEY = "cafevending_role";
+const BUCKET = "comprobantes";
 
 const INSUMOS = [
   { id: "cafe",        label: "Café molido",  unit: "kg", emoji: "☕", step: 0.5 },
@@ -57,6 +58,15 @@ function consolidarEntragas(lista) {
     }
   });
   return Object.values(mapa).sort((a, b) => b.fecha.localeCompare(a.fecha));
+}
+
+async function subirComprobante(file) {
+  const ext = file.name.split(".").pop();
+  const nombre = `cobro_${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from(BUCKET).upload(nombre, file, { contentType: file.type });
+  if (error) throw error;
+  const { data } = sb.storage.from(BUCKET).getPublicUrl(nombre);
+  return data.publicUrl;
 }
 
 const AVC = ["#E6F1FB:#0C447C","#E1F5EE:#085041","#FAEEDA:#633806","#FBEAF0:#72243E","#EAF3DE:#27500A","#E6F1FB:#185FA5"];
@@ -156,7 +166,7 @@ export default function App() {
       await reload();
     },
     async addCobro(c) {
-      await sb.from("cobros").insert({ cliente_id: c.clienteId, fecha: hoy(), monto: c.monto, medio: c.medio, nota: c.nota });
+      await sb.from("cobros").insert({ cliente_id: c.clienteId, fecha: hoy(), monto: c.monto, medio: c.medio, nota: c.nota, comprobante_url: c.comprobanteUrl || null });
       await reload();
     },
     async addEntregaOp(e) {
@@ -198,7 +208,7 @@ export default function App() {
   };
 
   const visitas = data.visitas.map(v => ({ ...v, clienteId: v.cliente_id, contadorAnterior: v.contador_anterior, detalleFalla: v.detalle_falla, serviciosManuales: v.servicios_manuales || 0 }));
-  const cobros  = data.cobros.map(c => ({ ...c, clienteId: c.cliente_id }));
+  const cobros  = data.cobros.map(c => ({ ...c, clienteId: c.cliente_id, comprobanteUrl: c.comprobante_url }));
   const dbNorm  = { ...db, visitas, cobros };
 
   if (!role) return <Login onLogin={handleLogin} />;
@@ -207,17 +217,9 @@ export default function App() {
   return <AdminApp db={dbNorm} onLogout={handleLogout} />;
 }
 
-// ✅ FIX: Login envuelto en <form> para evitar warning de contraseña + sesión persistente
 function Login({ onLogin }) {
-  const [user, setUser] = useState("");
-  const [pass, setPass] = useState("");
-  const [err, setErr]   = useState("");
-  function handleSubmit(e) {
-    e.preventDefault();
-    if (!user) { setErr("Seleccioná un rol primero."); return; }
-    if (pass === CREDS[user]) { setErr(""); onLogin(user); }
-    else { setErr("Contraseña incorrecta."); }
-  }
+  const [user, setUser] = useState(""); const [pass, setPass] = useState(""); const [err, setErr] = useState("");
+  function handleSubmit(e) { e.preventDefault(); if (!user) { setErr("Seleccioná un rol primero."); return; } if (pass === CREDS[user]) { setErr(""); onLogin(user); } else { setErr("Contraseña incorrecta."); } }
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
     <div style={{ width: "100%", maxWidth: 340 }}>
       <div style={{ textAlign: "center", marginBottom: 32 }}>
@@ -233,8 +235,7 @@ function Login({ onLogin }) {
         </div>
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Contraseña</div>
-          <input type="password" name="password" autoComplete="current-password" placeholder="Ingresá tu contraseña" value={pass} onChange={e => setPass(e.target.value)}
-            style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 14, boxSizing: "border-box" }} />
+          <input type="password" name="password" autoComplete="current-password" placeholder="Ingresá tu contraseña" value={pass} onChange={e => setPass(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 14, boxSizing: "border-box" }} />
         </div>
         {err && <div style={{ fontSize: 12, color: "#A32D2D", marginBottom: 10 }}>{err}</div>}
         <button type="submit" style={{ width: "100%", padding: 12, borderRadius: 10, border: "none", background: "#185FA5", color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Ingresar</button>
@@ -244,15 +245,11 @@ function Login({ onLogin }) {
 }
 
 function OpApp({ db, onLogout }) {
-  const [screen, setScreen]         = useState("home");
-  const [clienteSel, setClienteSel] = useState(null);
-  const [saved, setSaved]           = useState(null);
-  const [savedCobro, setSavedCobro] = useState(null);
-  const [opTab, setOpTab]           = useState("visitas");
-  const [saving, setSaving]         = useState(false);
+  const [screen, setScreen] = useState("home"); const [clienteSel, setClienteSel] = useState(null);
+  const [saved, setSaved] = useState(null); const [savedCobro, setSavedCobro] = useState(null);
+  const [opTab, setOpTab] = useState("visitas"); const [saving, setSaving] = useState(false);
   const [showProponer, setShowProponer] = useState(false);
-  const totalRecibido  = sumar(db.entregasOp);
-  const totalEntregado = sumar(db.visitas);
+  const totalRecibido = sumar(db.entregasOp); const totalEntregado = sumar(db.visitas);
   const stockOp = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totalRecibido[i.id] || 0) - (totalEntregado[i.id] || 0))]));
   async function handleGuardarVisita(v) { setSaving(true); await db.addVisita(v); setSaving(false); setSaved(v); setScreen("ok-visita"); }
   async function handleGuardarCobro(c) { setSaving(true); await db.addCobro(c); setSaving(false); setSavedCobro(c); setScreen("ok-cobro"); }
@@ -273,6 +270,7 @@ function OpApp({ db, onLogout }) {
       <Card style={{ width: "100%", maxWidth: 320, textAlign: "center" }}>
         <div style={{ fontSize: 24, fontWeight: 700, color: "#27500A", padding: "8px 0" }}>{P(savedCobro?.monto || 0)}</div>
         <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{mp?.emoji} {mp?.label}</div>
+        {savedCobro?.comprobanteUrl && <div style={{ marginTop: 10, fontSize: 12, color: "#1D9E75" }}>✓ Comprobante adjunto</div>}
       </Card>
     </OkScreen>;
   }
@@ -280,13 +278,13 @@ function OpApp({ db, onLogout }) {
   const diasAlerta = db.diasAlerta || DIAS_ALERTA_DEF;
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
-      <div><div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>☕ CaféVending</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Panel del operador</div></div>
+      <div><div style={{ fontSize: 15, fontWeight: 600 }}>☕ CaféVending</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Panel del operador</div></div>
       <button onClick={onLogout} style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "none", border: "none", cursor: "pointer" }}>Salir</button>
     </div>
     <div style={{ padding: 16 }}>
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>📦 Insumos en mano</div>
+          <div style={{ fontSize: 13, fontWeight: 500 }}>📦 Insumos en mano</div>
           {hasStock && <div style={{ fontSize: 13, fontWeight: 700, color: "#185FA5" }}>{P(costoIns(stockOp, db.preciosIns))}</div>}
         </div>
         {!hasStock ? <div style={{ fontSize: 12, color: "var(--color-text-secondary)", fontStyle: "italic" }}>No tenés insumos asignados aún.</div>
@@ -312,7 +310,7 @@ function OpApp({ db, onLogout }) {
           onMouseEnter={e => e.currentTarget.style.borderColor = "#378ADD"} onMouseLeave={e => e.currentTarget.style.borderColor = enAlerta && opTab === "visitas" ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}>
           <Av nombre={c.nombre} bg={bg} c={col} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 500, color: "var(--color-text-primary)" }}>{c.nombre}</div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>{c.nombre}</div>
             <div style={{ fontSize: 12, color: enAlerta && opTab === "visitas" ? "#A32D2D" : "var(--color-text-secondary)", marginTop: 2 }}>
               {opTab === "visitas" ? (uv ? `Última visita ${DA(uv.fecha)}` : "Sin visitas aún") : (uc ? `Último cobro ${DA(uc.fecha)}` : "Sin cobros")} · {c.maquinas} máq.
             </div>
@@ -329,7 +327,7 @@ function OpApp({ db, onLogout }) {
 function ProponerCliente({ db, onDone }) {
   const [form, setForm] = useState({ nombre: "", direccion: "", maquinas: 1 }); const [saving, setSaving] = useState(false); const [ok, setOk] = useState(false);
   async function proponer() { if (!form.nombre.trim()) return; setSaving(true); await db.proponerCliente(form); setSaving(false); setOk(true); setTimeout(() => { setOk(false); onDone(); }, 2000); }
-  if (ok) return <div style={{ background: "#EAF3DE", borderRadius: 10, padding: "12px 14px", marginTop: 10, fontSize: 13, color: "#27500A" }}>✓ Propuesta enviada. El admin la revisará pronto.</div>;
+  if (ok) return <div style={{ background: "#EAF3DE", borderRadius: 10, padding: "12px 14px", marginTop: 10, fontSize: 13, color: "#27500A" }}>✓ Propuesta enviada.</div>;
   return <Card style={{ marginTop: 10 }}>
     <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Proponer nuevo cliente</div>
     <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 12 }}>El admin deberá aprobarlo antes de que quede activo.</div>
@@ -349,7 +347,7 @@ function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
   const insNum = Object.fromEntries(Object.entries(ins).map(([k, v]) => [k, parseFloat(v) || 0]));
   const costo = costoIns(insNum, precios); const cafesContador = Math.max(0, (parseFloat(cAct) || 0) - (parseFloat(cAnt) || 0));
   function guardar() {
-    for (const i of INSUMOS) { if (insNum[i.id] > (stockOp[i.id] || 0)) { setErr(`No tenés suficiente ${i.label} (disponible: ${FN(stockOp[i.id])} ${i.unit})`); return; } }
+    for (const i of INSUMOS) { if (insNum[i.id] > (stockOp[i.id] || 0)) { setErr(`No tenés suficiente ${i.label}`); return; } }
     setErr(""); onGuardar({ clienteId: cliente.id, contadorAnterior: parseFloat(cAnt) || 0, contador: parseFloat(cAct) || 0, serviciosManuales: usaManual ? parseInt(servManual) || 0 : 0, insumos: insNum, falla, detalleFalla: detF, observaciones: obs });
   }
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
@@ -416,12 +414,40 @@ function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
   </div>;
 }
 
+// ✅ FASE 3: FormCobro con adjunto de comprobante
 function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, onBack }) {
-  const [monto, setMonto] = useState(""); const [medio, setMedio] = useState("transferencia"); const [nota, setNota] = useState(""); const [err, setErr] = useState("");
+  const [monto, setMonto] = useState(""); const [medio, setMedio] = useState("transferencia");
+  const [nota, setNota] = useState(""); const [err, setErr] = useState("");
+  const [archivo, setArchivo] = useState(null); const [preview, setPreview] = useState(null);
+  const [subiendo, setSubiendo] = useState(false);
+
   const servReales = visitas.reduce((s, v) => { const porContador = Math.max(0, (v.contador || 0) - (v.contadorAnterior || 0)); const porManual = v.serviciosManuales || 0; return s + (porManual > 0 ? porManual : porContador); }, 0);
   const servFact = Math.max(cliente.minimo, servReales), totalFact = servFact * precioServ;
   const totalCob = cobros.reduce((s, c) => s + c.monto, 0), saldo = totalFact - totalCob;
-  function guardar() { if (!monto || parseFloat(monto) <= 0) { setErr("Ingresá un monto válido."); return; } setErr(""); onGuardar({ clienteId: cliente.id, monto: parseFloat(monto), medio, nota }); }
+
+  function handleArchivo(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    setArchivo(f);
+    const reader = new FileReader();
+    reader.onload = ev => setPreview(ev.target.result);
+    reader.readAsDataURL(f);
+  }
+
+  async function guardar() {
+    if (!monto || parseFloat(monto) <= 0) { setErr("Ingresá un monto válido."); return; }
+    setErr(""); setSubiendo(true);
+    let comprobanteUrl = null;
+    if (archivo) {
+      try { comprobanteUrl = await subirComprobante(archivo); }
+      catch (e) { setErr("Error al subir el comprobante. Intentá de nuevo."); setSubiendo(false); return; }
+    }
+    setSubiendo(false);
+    onGuardar({ clienteId: cliente.id, monto: parseFloat(monto), medio, nota, comprobanteUrl });
+  }
+
+  const isSaving = saving || subiendo;
+
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
       <button onClick={onBack} style={{ fontSize: 20, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)" }}>←</button>
@@ -435,9 +461,12 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
       </div>
       {cobros.length > 0 && <><Sec>Cobros anteriores</Sec>
         {cobros.map(c => { const mp = MEDIOS_PAGO.find(m => m.id === c.medio);
-          return <div key={c.id} style={{ background: "var(--color-background-primary)", borderRadius: 10, border: "0.5px solid var(--color-border-tertiary)", padding: "10px 14px", marginBottom: 6, display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 18 }}>{mp?.emoji}</span>
-            <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{P(c.monto)}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{mp?.label} · {FF(c.fecha)}{c.nota ? ` · ${c.nota}` : ""}</div></div>
+          return <div key={c.id} style={{ background: "var(--color-background-primary)", borderRadius: 10, border: "0.5px solid var(--color-border-tertiary)", padding: "10px 14px", marginBottom: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 18 }}>{mp?.emoji}</span>
+              <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{P(c.monto)}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{mp?.label} · {FF(c.fecha)}{c.nota ? ` · ${c.nota}` : ""}</div></div>
+              {c.comprobanteUrl && <a href={c.comprobanteUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#185FA5", textDecoration: "none", background: "#E6F1FB", padding: "3px 8px", borderRadius: 6 }}>📎 Ver</a>}
+            </div>
           </div>; })}
       </>}
       <Sec mt={16}>Nuevo cobro</Sec>
@@ -456,13 +485,36 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
             {MEDIOS_PAGO.map(m => <button key={m.id} onClick={() => setMedio(m.id)} style={{ flex: 1, padding: "12px", borderRadius: 10, border: `2px solid ${medio === m.id ? "#185FA5" : "var(--color-border-tertiary)"}`, background: medio === m.id ? "#E6F1FB" : "var(--color-background-primary)", color: medio === m.id ? "#0C447C" : "var(--color-text-secondary)", cursor: "pointer", fontSize: 14, fontWeight: medio === m.id ? 600 : 400, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><span style={{ fontSize: 20 }}>{m.emoji}</span>{m.label}</button>)}
           </div>
         </div>
-        <div>
+        <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Nota (opcional)</div>
-          <input placeholder="Ej: pago parcial, número de transferencia…" value={nota} onChange={e => setNota(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />
+          <input placeholder="Ej: número de transferencia…" value={nota} onChange={e => setNota(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />
+        </div>
+
+        {/* ✅ ADJUNTAR COMPROBANTE */}
+        <div>
+          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 8 }}>Comprobante de transferencia (opcional)</div>
+          {!preview ? (
+            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: "0.5px dashed var(--color-border-secondary)", cursor: "pointer", background: "var(--color-background-secondary)" }}>
+              <span style={{ fontSize: 20 }}>📎</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>Adjuntar imagen</div>
+                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Foto del comprobante o captura de pantalla</div>
+              </div>
+              <input type="file" accept="image/*" capture="environment" onChange={handleArchivo} style={{ display: "none" }} />
+            </label>
+          ) : (
+            <div style={{ position: "relative" }}>
+              <img src={preview} alt="comprobante" style={{ width: "100%", borderRadius: 10, maxHeight: 200, objectFit: "cover", border: "0.5px solid var(--color-border-tertiary)" }} />
+              <button onClick={() => { setArchivo(null); setPreview(null); }} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+              <div style={{ marginTop: 6, fontSize: 11, color: "#1D9E75" }}>✓ {archivo?.name}</div>
+            </div>
+          )}
         </div>
       </Card>
       {err && <div style={{ background: "#FCEBEB", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#A32D2D" }}>{err}</div>}
-      <button onClick={guardar} disabled={saving} style={{ width: "100%", padding: 14, borderRadius: 12, border: "none", background: saving ? "#888" : "#1D9E75", color: "#fff", fontSize: 15, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer" }}>{saving ? "Guardando…" : "Registrar cobro"}</button>
+      <button onClick={guardar} disabled={isSaving} style={{ width: "100%", padding: 14, borderRadius: 12, border: "none", background: isSaving ? "#888" : "#1D9E75", color: "#fff", fontSize: 15, fontWeight: 600, cursor: isSaving ? "not-allowed" : "pointer" }}>
+        {subiendo ? "Subiendo comprobante…" : saving ? "Guardando…" : "Registrar cobro"}
+      </button>
     </div>
   </div>;
 }
@@ -480,7 +532,7 @@ function AdminApp({ db, onLogout }) {
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
       <div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>☕ CaféVending · Admin
+        <div style={{ fontSize: 15, fontWeight: 600 }}>☕ CaféVending · Admin
           {(alertasStock.length + clientesSinVisita.length + pendientes.length) > 0 && <span style={{ marginLeft: 8, fontSize: 11, background: "#E24B4A", color: "#fff", padding: "2px 8px", borderRadius: 20, fontWeight: 500 }}>⚠ {alertasStock.length + clientesSinVisita.length + pendientes.length}</span>}
         </div>
         <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{db.clientes.length} clientes · 60 máquinas</div>
@@ -660,12 +712,9 @@ function TabOp({ db, stockOp, stockDepo }) {
   const [show,setShow]=useState(false),[form,setForm]=useState(emptyIns()),[nota,setNota]=useState(""),[saving,setSaving]=useState(false),[ok,setOk]=useState(false),[errs,setErrs]=useState({});
   const formNum=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,parseFloat(v)||0]));
   const costoRetiro=costoIns(formNum,db.preciosIns);
-
-  // ✅ COMISIÓN DEL OPERADOR
   const comisionPorServ = db.comisionOp || 0;
   const totalServiciosGlobal = db.visitas.reduce((s, v) => s + serviciosDeVisita(v), 0);
   const totalComision = totalServiciosGlobal * comisionPorServ;
-
   async function entregar() {
     const ins=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,parseFloat(v)||0]));
     const e={}; INSUMOS.forEach(i=>{if(ins[i.id]>(stockDepo[i.id]||0))e[i.id]=true;});
@@ -676,26 +725,14 @@ function TabOp({ db, stockOp, stockDepo }) {
   const entregasConsolidadas=consolidarEntragas(db.entregasOp);
   return <div>
     {ok&&<div style={{ background:"#EAF3DE",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13,color:"#27500A" }}>✓ Entrega registrada.</div>}
-
-    {/* Comisión del operador */}
     {comisionPorServ > 0 && <div style={{ background:"#E6F1FB",borderRadius:12,padding:"14px 16px",marginBottom:16 }}>
       <div style={{ fontSize:12,fontWeight:500,color:"#0C447C",marginBottom:10,textTransform:"uppercase",letterSpacing:".05em" }}>💰 Comisión del operador</div>
       <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8 }}>
-        <div style={{ background:"#fff",borderRadius:8,padding:"10px 12px",textAlign:"center" }}>
-          <div style={{ fontSize:10,color:"#185FA5" }}>Servicios totales</div>
-          <div style={{ fontSize:18,fontWeight:700,color:"#0C447C" }}>{totalServiciosGlobal.toLocaleString("es-AR")}</div>
-        </div>
-        <div style={{ background:"#fff",borderRadius:8,padding:"10px 12px",textAlign:"center" }}>
-          <div style={{ fontSize:10,color:"#185FA5" }}>Por servicio</div>
-          <div style={{ fontSize:18,fontWeight:700,color:"#0C447C" }}>{P(comisionPorServ)}</div>
-        </div>
-        <div style={{ background:"#fff",borderRadius:8,padding:"10px 12px",textAlign:"center" }}>
-          <div style={{ fontSize:10,color:"#185FA5" }}>Total a pagar</div>
-          <div style={{ fontSize:18,fontWeight:700,color:"#27500A" }}>{P(totalComision)}</div>
-        </div>
+        <div style={{ background:"#fff",borderRadius:8,padding:"10px 12px",textAlign:"center" }}><div style={{ fontSize:10,color:"#185FA5" }}>Servicios totales</div><div style={{ fontSize:18,fontWeight:700,color:"#0C447C" }}>{totalServiciosGlobal.toLocaleString("es-AR")}</div></div>
+        <div style={{ background:"#fff",borderRadius:8,padding:"10px 12px",textAlign:"center" }}><div style={{ fontSize:10,color:"#185FA5" }}>Por servicio</div><div style={{ fontSize:18,fontWeight:700,color:"#0C447C" }}>{P(comisionPorServ)}</div></div>
+        <div style={{ background:"#fff",borderRadius:8,padding:"10px 12px",textAlign:"center" }}><div style={{ fontSize:10,color:"#185FA5" }}>Total a pagar</div><div style={{ fontSize:18,fontWeight:700,color:"#27500A" }}>{P(totalComision)}</div></div>
       </div>
     </div>}
-
     <Card style={{ marginBottom:16 }}>
       <div style={{ fontSize:11,fontWeight:500,color:"var(--color-text-secondary)",marginBottom:10,textTransform:"uppercase",letterSpacing:".05em" }}>🚚 Insumos del operador ahora</div>
       {INSUMOS.every(i=>stockOp[i.id]===0)?<div style={{ fontSize:12,color:"var(--color-text-secondary)",fontStyle:"italic" }}>Sin insumos actualmente.</div>
@@ -806,9 +843,13 @@ function DetalleCli({ cliente, db, onBack }) {
     {dTab==="cobros"&&<>
       {cobs.length===0&&<div style={{ fontSize:13,color:"var(--color-text-secondary)" }}>Sin cobros registrados.</div>}
       {cobs.map(c=>{const mp=MEDIOS_PAGO.find(m=>m.id===c.medio);
-        return <Card key={c.id} style={{ marginBottom:8,display:"flex",alignItems:"center",gap:12 }}>
-          <span style={{ fontSize:22 }}>{mp?.emoji}</span>
-          <div style={{ flex:1 }}><div style={{ fontSize:15,fontWeight:700,color:"#27500A" }}>{P(c.monto)}</div><div style={{ fontSize:12,color:"var(--color-text-secondary)" }}>{mp?.label} · {FF(c.fecha)}{c.nota?` · ${c.nota}`:""}</div></div>
+        return <Card key={c.id} style={{ marginBottom:8 }}>
+          <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom: c.comprobanteUrl ? 10 : 0 }}>
+            <span style={{ fontSize:22 }}>{mp?.emoji}</span>
+            <div style={{ flex:1 }}><div style={{ fontSize:15,fontWeight:700,color:"#27500A" }}>{P(c.monto)}</div><div style={{ fontSize:12,color:"var(--color-text-secondary)" }}>{mp?.label} · {FF(c.fecha)}{c.nota?` · ${c.nota}`:""}</div></div>
+            {c.comprobanteUrl && <a href={c.comprobanteUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:"#185FA5",textDecoration:"none",background:"#E6F1FB",padding:"4px 10px",borderRadius:6,whiteSpace:"nowrap" }}>📎 Ver comprobante</a>}
+          </div>
+          {c.comprobanteUrl && <img src={c.comprobanteUrl} alt="comprobante" style={{ width:"100%",borderRadius:8,maxHeight:160,objectFit:"cover",border:"0.5px solid var(--color-border-tertiary)" }} />}
         </Card>;})}
     </>}
   </div>;
@@ -821,12 +862,10 @@ function TabCfg({ db }) {
   const [localAlertas,setLocalAlertas]=useState(db.alertasStock||ALERTAS_DEFAULT),[localDias,setLocalDias]=useState(db.diasAlerta||DIAS_ALERTA_DEF);
   const [localComision,setLocalComision]=useState(db.comisionOp||COMISION_DEF);
   const [saving,setSaving]=useState(false),[saved,setSaved]=useState(false);
-
   async function guardarConfig(){setSaving(true);await db.saveConfig(localPxServ,localPrecios,localAlertas,localDias,localComision);setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2000);}
   async function agregar(){if(!nuevo.nombre.trim())return;await db.addCliente({...nuevo,maquinas:parseInt(nuevo.maquinas)||1,minimo:parseInt(nuevo.minimo)||250});setNuevo({nombre:"",direccion:"",maquinas:1,minimo:250});}
   async function guardarEdicion(){await db.updateCliente({...editando,maquinas:parseInt(editando.maquinas)||1,minimo:parseInt(editando.minimo)||0});setEditando(null);}
   async function confirmarEliminar(){await db.deleteCliente(confirmar.cliente.id);setConfirmar(null);setEditando(null);}
-
   return <div>
     {confirmar&&<ConfirmModal title={`Eliminar "${confirmar.cliente.nombre}"`} msg={confirmar.tieneVisitas?"Este cliente tiene visitas registradas.":"Este cliente no tiene registros."} onConfirm={confirmarEliminar} onCancel={()=>setConfirmar(null)} />}
     <Sec>Precio por servicio</Sec>
@@ -835,15 +874,12 @@ function TabCfg({ db }) {
       <span style={{ fontSize:13,color:"var(--color-text-secondary)" }}>$</span>
       <input type="number" value={localPxServ} onChange={e=>setLocalPxServ(parseFloat(e.target.value)||0)} style={{ width:100,textAlign:"right",padding:8,borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:16,fontWeight:600 }} />
     </Card>
-
-    {/* ✅ COMISIÓN DEL OPERADOR */}
     <Sec>Comisión del operador</Sec>
     <Card style={{ marginBottom:20,display:"flex",alignItems:"center",gap:12 }}>
       <div style={{ flex:1 }}><div style={{ fontSize:13,fontWeight:500 }}>Monto por servicio vendido</div><div style={{ fontSize:11,color:"var(--color-text-secondary)" }}>Se calcula sobre todos los servicios reales</div></div>
       <span style={{ fontSize:13,color:"var(--color-text-secondary)" }}>$</span>
       <input type="number" min="0" value={localComision} onChange={e=>setLocalComision(parseFloat(e.target.value)||0)} style={{ width:100,textAlign:"right",padding:8,borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:16,fontWeight:600 }} />
     </Card>
-
     <Sec>Alerta de visitas pendientes</Sec>
     <Card style={{ marginBottom:20,display:"flex",alignItems:"center",gap:12 }}>
       <div style={{ flex:1 }}><div style={{ fontSize:13,fontWeight:500 }}>Días sin visita para alertar</div><div style={{ fontSize:11,color:"var(--color-text-secondary)" }}>Alerta roja si hace más de N días</div></div>
