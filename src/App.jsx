@@ -73,7 +73,7 @@ const AVC = ["#E6F1FB:#0C447C","#E1F5EE:#085041","#FAEEDA:#633806","#FBEAF0:#722
 function avc(id) { const [bg, c] = AVC[(id - 1) % AVC.length].split(":"); return { bg, c }; }
 
 function Av({ nombre, size = 36, bg = "#E6F1FB", c = "#0C447C" }) {
-  return <div style={{ width: size, height: size, borderRadius: "50%", background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .38, fontWeight: 700, flexShrink: 0 }}>{nombre.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()}</div>;
+  return <div style={{ width: size, height: size, borderRadius: "50%", background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .38, fontWeight: 700, flexShrink: 0 }}>{nombre.trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase()}</div>;
 }
 function Sec({ children, mt = 4 }) {
   return <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10, marginTop: mt }}>{children}</div>;
