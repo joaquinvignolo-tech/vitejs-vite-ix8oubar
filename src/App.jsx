@@ -73,53 +73,63 @@ const AVC = ["#E6F1FB:#0C447C","#E1F5EE:#085041","#FAEEDA:#633806","#FBEAF0:#722
 function avc(id) { const [bg, c] = AVC[(id - 1) % AVC.length].split(":"); return { bg, c }; }
 
 function Av({ nombre, size = 36, bg = "#E6F1FB", c = "#0C447C" }) {
-  return <div style={{ width: size, height: size, borderRadius: "50%", background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .35, fontWeight: 700, flexShrink: 0 }}>{nombre.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()}</div>;
+  return <div style={{ width: size, height: size, borderRadius: "50%", background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .38, fontWeight: 700, flexShrink: 0 }}>{nombre.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()}</div>;
 }
 function Sec({ children, mt = 4 }) {
-  return <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8, marginTop: mt }}>{children}</div>;
+  return <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10, marginTop: mt }}>{children}</div>;
 }
 function Card({ children, style = {} }) {
-  return <div style={{ background: "var(--color-background-primary)", borderRadius: 12, border: "0.5px solid var(--color-border-tertiary)", padding: "12px 14px", ...style }}>{children}</div>;
+  return <div style={{ background: "var(--color-background-primary)", borderRadius: 14, border: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", ...style }}>{children}</div>;
 }
 function Met({ label, value, sub, warn }) {
-  return <div style={{ background: warn ? "#FCEBEB" : "var(--color-background-secondary)", borderRadius: 8, padding: "10px 12px" }}>
-    <div style={{ fontSize: 11, color: warn ? "#A32D2D" : "var(--color-text-secondary)", marginBottom: 4 }}>{label}</div>
+  return <div style={{ background: warn ? "#FCEBEB" : "var(--color-background-secondary)", borderRadius: 10, padding: "12px 14px" }}>
+    <div style={{ fontSize: 12, color: warn ? "#A32D2D" : "var(--color-text-secondary)", marginBottom: 4 }}>{label}</div>
     <div style={{ fontSize: 20, fontWeight: 700, color: warn ? "#A32D2D" : "var(--color-text-primary)" }}>{value}</div>
     {sub && <div style={{ fontSize: 11, color: warn ? "#791F1F" : "var(--color-text-secondary)", marginTop: 2 }}>{sub}</div>}
   </div>;
 }
 function Pill({ children, bg = "#F1EFE8", c = "#2C2C2A" }) {
-  return <span style={{ fontSize: 11, background: bg, color: c, padding: "3px 9px", borderRadius: 20, whiteSpace: "nowrap" }}>{children}</span>;
+  return <span style={{ fontSize: 12, background: bg, color: c, padding: "4px 10px", borderRadius: 20, whiteSpace: "nowrap" }}>{children}</span>;
 }
 function Spinner() {
   return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
-    <div style={{ width: 28, height: 28, border: "2px solid var(--color-border-tertiary)", borderTopColor: "#185FA5", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+    <div style={{ width: 32, height: 32, border: "3px solid var(--color-border-tertiary)", borderTopColor: "#185FA5", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
     <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
   </div>;
 }
 function ConfirmModal({ title, msg, onConfirm, onCancel }) {
   return <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999, padding: 20 }}>
     <div style={{ background: "var(--color-background-primary)", borderRadius: 16, padding: "24px 20px", maxWidth: 320, width: "100%" }}>
-      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 8 }}>{title}</div>
-      <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 20, lineHeight: 1.5 }}>{msg}</div>
+      <div style={{ fontSize: 16, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 8 }}>{title}</div>
+      <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 20, lineHeight: 1.5 }}>{msg}</div>
       <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={onCancel} style={{ flex: 1, padding: 10, borderRadius: 9, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", cursor: "pointer", fontSize: 13 }}>Cancelar</button>
-        <button onClick={onConfirm} style={{ flex: 1, padding: 10, borderRadius: 9, border: "none", background: "#E24B4A", cursor: "pointer", fontSize: 13, fontWeight: 500, color: "#fff" }}>Eliminar</button>
+        <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", cursor: "pointer", fontSize: 15 }}>Cancelar</button>
+        <button onClick={onConfirm} style={{ flex: 1, padding: 14, borderRadius: 10, border: "none", background: "#E24B4A", cursor: "pointer", fontSize: 15, fontWeight: 600, color: "#fff" }}>Eliminar</button>
       </div>
     </div>
   </div>;
 }
 function OkScreen({ titulo, sub, onVolver, children }) {
-  return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, gap: 16 }}>
-    <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#EAF3DE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>✓</div>
+  return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24, gap: 20 }}>
+    <div style={{ width: 72, height: 72, borderRadius: "50%", background: "#EAF3DE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>✓</div>
     <div style={{ textAlign: "center" }}>
-      <div style={{ fontSize: 17, fontWeight: 600, color: "var(--color-text-primary)" }}>{titulo}</div>
-      <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 4 }}>{sub}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: "var(--color-text-primary)" }}>{titulo}</div>
+      <div style={{ fontSize: 16, color: "var(--color-text-secondary)", marginTop: 6 }}>{sub}</div>
     </div>
     {children}
-    <button onClick={onVolver} style={{ padding: "12px 28px", borderRadius: 10, border: "none", background: "#185FA5", color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Volver al inicio</button>
+    <button onClick={onVolver} style={{ padding: "16px 36px", borderRadius: 14, border: "none", background: "#185FA5", color: "#fff", fontSize: 17, fontWeight: 600, cursor: "pointer" }}>Volver al inicio</button>
   </div>;
 }
+
+// Meta viewport tag para mobile
+const MetaViewport = () => {
+  useEffect(() => {
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) { meta = document.createElement('meta'); meta.name = 'viewport'; document.head.appendChild(meta); }
+    meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no';
+  }, []);
+  return null;
+};
 
 export default function App() {
   const [role, setRole] = useState(() => { try { return localStorage.getItem(SESSION_KEY) || null; } catch { return null; } });
@@ -169,38 +179,14 @@ export default function App() {
       await sb.from("cobros").insert({ cliente_id: c.clienteId, fecha: hoy(), monto: c.monto, medio: c.medio, nota: c.nota, comprobante_url: c.comprobanteUrl || null });
       await reload();
     },
-    async addEntregaOp(e) {
-      await sb.from("entregas_operador").insert({ fecha: hoy(), insumos: e.insumos, nota: e.nota });
-      await reload();
-    },
-    async addIngresoDepo(i) {
-      await sb.from("ingresos_deposito").insert({ fecha: hoy(), insumos: i.insumos, nota: i.nota });
-      await reload();
-    },
-    async updateCliente(c) {
-      await sb.from("clientes").update({ nombre: c.nombre, direccion: c.direccion, maquinas: c.maquinas, minimo: c.minimo }).eq("id", c.id);
-      await reload();
-    },
-    async deleteCliente(id) {
-      await sb.from("clientes").update({ activo: false, pendiente_aprobacion: false }).eq("id", id);
-      await reload();
-    },
-    async addCliente(c) {
-      await sb.from("clientes").insert({ nombre: c.nombre, direccion: c.direccion, maquinas: c.maquinas, minimo: c.minimo });
-      await reload();
-    },
-    async proponerCliente(c) {
-      await sb.from("clientes").insert({ nombre: c.nombre, direccion: c.direccion, maquinas: c.maquinas, minimo: 250, activo: false, pendiente_aprobacion: true });
-      await reload();
-    },
-    async aprobarCliente(id) {
-      await sb.from("clientes").update({ activo: true, pendiente_aprobacion: false }).eq("id", id);
-      await reload();
-    },
-    async rechazarCliente(id) {
-      await sb.from("clientes").update({ pendiente_aprobacion: false }).eq("id", id);
-      await reload();
-    },
+    async addEntregaOp(e) { await sb.from("entregas_operador").insert({ fecha: hoy(), insumos: e.insumos, nota: e.nota }); await reload(); },
+    async addIngresoDepo(i) { await sb.from("ingresos_deposito").insert({ fecha: hoy(), insumos: i.insumos, nota: i.nota }); await reload(); },
+    async updateCliente(c) { await sb.from("clientes").update({ nombre: c.nombre, direccion: c.direccion, maquinas: c.maquinas, minimo: c.minimo }).eq("id", c.id); await reload(); },
+    async deleteCliente(id) { await sb.from("clientes").update({ activo: false, pendiente_aprobacion: false }).eq("id", id); await reload(); },
+    async addCliente(c) { await sb.from("clientes").insert({ nombre: c.nombre, direccion: c.direccion, maquinas: c.maquinas, minimo: c.minimo }); await reload(); },
+    async proponerCliente(c) { await sb.from("clientes").insert({ nombre: c.nombre, direccion: c.direccion, maquinas: c.maquinas, minimo: 250, activo: false, pendiente_aprobacion: true }); await reload(); },
+    async aprobarCliente(id) { await sb.from("clientes").update({ activo: true, pendiente_aprobacion: false }).eq("id", id); await reload(); },
+    async rechazarCliente(id) { await sb.from("clientes").update({ pendiente_aprobacion: false }).eq("id", id); await reload(); },
     async saveConfig(precioServ, preciosIns, alertasStock, diasAlerta, comisionOp) {
       await sb.from("configuracion").update({ precio_servicio: precioServ, precios_insumos: preciosIns, alertas_stock: alertasStock, dias_alerta_visita: diasAlerta, comision_operador: comisionOp, updated_at: new Date().toISOString() }).eq("id", data.configId);
       await reload();
@@ -211,39 +197,40 @@ export default function App() {
   const cobros  = data.cobros.map(c => ({ ...c, clienteId: c.cliente_id, comprobanteUrl: c.comprobante_url }));
   const dbNorm  = { ...db, visitas, cobros };
 
-  if (!role) return <Login onLogin={handleLogin} />;
-  if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}><div style={{ fontSize: 32 }}>☕</div><Spinner /><div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Cargando datos…</div></div>;
-  if (role === "operador") return <OpApp db={dbNorm} onLogout={handleLogout} />;
+  if (!role) return <><MetaViewport /><Login onLogin={handleLogin} /></>;
+  if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}><div style={{ fontSize: 40 }}>☕</div><Spinner /><div style={{ fontSize: 15, color: "var(--color-text-secondary)" }}>Cargando datos…</div></div>;
+  if (role === "operador") return <><MetaViewport /><OpApp db={dbNorm} onLogout={handleLogout} /></>;
   return <AdminApp db={dbNorm} onLogout={handleLogout} />;
 }
 
 function Login({ onLogin }) {
   const [user, setUser] = useState(""); const [pass, setPass] = useState(""); const [err, setErr] = useState("");
   function handleSubmit(e) { e.preventDefault(); if (!user) { setErr("Seleccioná un rol primero."); return; } if (pass === CREDS[user]) { setErr(""); onLogin(user); } else { setErr("Contraseña incorrecta."); } }
-  return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-    <div style={{ width: "100%", maxWidth: 340 }}>
-      <div style={{ textAlign: "center", marginBottom: 32 }}>
-        <div style={{ fontSize: 36, marginBottom: 8 }}>☕</div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: "var(--color-text-primary)", letterSpacing: -.5 }}>CaféVending</div>
-        <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 4 }}>Sistema de gestión</div>
+  return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div style={{ width: "100%", maxWidth: 380 }}>
+      <div style={{ textAlign: "center", marginBottom: 40 }}>
+        <div style={{ fontSize: 52, marginBottom: 12 }}>☕</div>
+        <div style={{ fontSize: 28, fontWeight: 700, color: "var(--color-text-primary)", letterSpacing: -.5 }}>CaféVending</div>
+        <div style={{ fontSize: 16, color: "var(--color-text-secondary)", marginTop: 6 }}>Sistema de gestión</div>
       </div>
       <form onSubmit={handleSubmit} autoComplete="on">
-        <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 16 }}>
+        <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 14, padding: 4, marginBottom: 20 }}>
           {[{ r: "operador", l: "Operador" }, { r: "admin", l: "Administrador" }].map(({ r, l }) => (
-            <button type="button" key={r} onClick={() => { setUser(r); setErr(""); setPass(""); }} style={{ flex: 1, padding: "9px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: user === r ? 500 : 400, background: user === r ? "var(--color-background-primary)" : "transparent", color: user === r ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>{l}</button>
+            <button type="button" key={r} onClick={() => { setUser(r); setErr(""); setPass(""); }} style={{ flex: 1, padding: "14px", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 16, fontWeight: user === r ? 600 : 400, background: user === r ? "var(--color-background-primary)" : "transparent", color: user === r ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>{l}</button>
           ))}
         </div>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Contraseña</div>
-          <input type="password" name="password" autoComplete="current-password" placeholder="Ingresá tu contraseña" value={pass} onChange={e => setPass(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 14, boxSizing: "border-box" }} />
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 8 }}>Contraseña</div>
+          <input type="password" name="password" autoComplete="current-password" placeholder="Ingresá tu contraseña" value={pass} onChange={e => setPass(e.target.value)} style={{ width: "100%", padding: "16px", borderRadius: 12, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 18, boxSizing: "border-box" }} />
         </div>
-        {err && <div style={{ fontSize: 12, color: "#A32D2D", marginBottom: 10 }}>{err}</div>}
-        <button type="submit" style={{ width: "100%", padding: 12, borderRadius: 10, border: "none", background: "#185FA5", color: "#fff", fontSize: 14, fontWeight: 500, cursor: "pointer" }}>Ingresar</button>
+        {err && <div style={{ fontSize: 14, color: "#A32D2D", marginBottom: 12 }}>{err}</div>}
+        <button type="submit" style={{ width: "100%", padding: 18, borderRadius: 14, border: "none", background: "#185FA5", color: "#fff", fontSize: 18, fontWeight: 600, cursor: "pointer" }}>Ingresar</button>
       </form>
     </div>
   </div>;
 }
 
+// ✅ PANEL OPERADOR — OPTIMIZADO PARA MOBILE
 function OpApp({ db, onLogout }) {
   const [screen, setScreen] = useState("home"); const [clienteSel, setClienteSel] = useState(null);
   const [saved, setSaved] = useState(null); const [savedCobro, setSavedCobro] = useState(null);
@@ -257,68 +244,95 @@ function OpApp({ db, onLogout }) {
   if (screen === "cobro" && clienteSel)  return <FormCobro  cliente={clienteSel} precioServ={db.precioServ} visitas={db.visitas.filter(v => v.clienteId === clienteSel.id)} cobros={db.cobros.filter(c => c.clienteId === clienteSel.id)} saving={saving} onGuardar={handleGuardarCobro} onBack={() => setScreen("home")} />;
   if (screen === "ok-visita") {
     const c = db.clientes.find(c => c.id === saved?.clienteId);
-    return <OkScreen titulo="Visita guardada" sub={c?.nombre} onVolver={() => setScreen("home")}>
-      <Card style={{ width: "100%", maxWidth: 320 }}>
-        {INSUMOS.filter(i => (saved?.insumos[i.id] || 0) > 0).map(i => <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0", color: "var(--color-text-secondary)" }}><span>{i.emoji} {i.label}</span><span style={{ fontWeight: 500, color: "var(--color-text-primary)" }}>{FN(saved.insumos[i.id])} {i.unit}</span></div>)}
-        <div style={{ borderTop: "0.5px solid var(--color-border-tertiary)", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 700 }}><span>Costo insumos</span><span>{P(costoIns(saved?.insumos || {}, db.preciosIns))}</span></div>
+    return <OkScreen titulo="¡Visita guardada!" sub={c?.nombre} onVolver={() => setScreen("home")}>
+      <Card style={{ width: "100%", maxWidth: 340 }}>
+        {INSUMOS.filter(i => (saved?.insumos[i.id] || 0) > 0).map(i => <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 15, padding: "6px 0", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)" }}><span>{i.emoji} {i.label}</span><span style={{ fontWeight: 600, color: "var(--color-text-primary)" }}>{FN(saved.insumos[i.id])} {i.unit}</span></div>)}
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--color-border-secondary)", display: "flex", justifyContent: "space-between", fontSize: 16, fontWeight: 700 }}><span>Costo insumos</span><span>{P(costoIns(saved?.insumos || {}, db.preciosIns))}</span></div>
       </Card>
     </OkScreen>;
   }
   if (screen === "ok-cobro") {
     const c = db.clientes.find(c => c.id === savedCobro?.clienteId); const mp = MEDIOS_PAGO.find(m => m.id === savedCobro?.medio);
-    return <OkScreen titulo="Cobro registrado" sub={c?.nombre} onVolver={() => setScreen("home")}>
-      <Card style={{ width: "100%", maxWidth: 320, textAlign: "center" }}>
-        <div style={{ fontSize: 24, fontWeight: 700, color: "#27500A", padding: "8px 0" }}>{P(savedCobro?.monto || 0)}</div>
-        <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>{mp?.emoji} {mp?.label}</div>
-        {savedCobro?.comprobanteUrl && <div style={{ marginTop: 10, fontSize: 12, color: "#1D9E75" }}>✓ Comprobante adjunto</div>}
+    return <OkScreen titulo="¡Cobro registrado!" sub={c?.nombre} onVolver={() => setScreen("home")}>
+      <Card style={{ width: "100%", maxWidth: 340, textAlign: "center" }}>
+        <div style={{ fontSize: 32, fontWeight: 700, color: "#27500A", padding: "12px 0" }}>{P(savedCobro?.monto || 0)}</div>
+        <div style={{ fontSize: 16, color: "var(--color-text-secondary)" }}>{mp?.emoji} {mp?.label}</div>
+        {savedCobro?.comprobanteUrl && <div style={{ marginTop: 12, fontSize: 14, color: "#1D9E75" }}>✓ Comprobante adjunto</div>}
       </Card>
     </OkScreen>;
   }
+
   const hasStock = INSUMOS.some(i => stockOp[i.id] > 0);
   const diasAlerta = db.diasAlerta || DIAS_ALERTA_DEF;
-  return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
-    <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
-      <div><div style={{ fontSize: 15, fontWeight: 600 }}>☕ CaféVending</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Panel del operador</div></div>
-      <button onClick={onLogout} style={{ fontSize: 12, color: "var(--color-text-secondary)", background: "none", border: "none", cursor: "pointer" }}>Salir</button>
+
+  return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 520, margin: "0 auto" }}>
+    {/* Header */}
+    <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
+      <div>
+        <div style={{ fontSize: 20, fontWeight: 700 }}>☕ CaféVending</div>
+        <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>Panel del operador</div>
+      </div>
+      <button onClick={onLogout} style={{ fontSize: 14, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", border: "none", cursor: "pointer", padding: "8px 16px", borderRadius: 10 }}>Salir</button>
     </div>
-    <div style={{ padding: 16 }}>
-      <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 500 }}>📦 Insumos en mano</div>
-          {hasStock && <div style={{ fontSize: 13, fontWeight: 700, color: "#185FA5" }}>{P(costoIns(stockOp, db.preciosIns))}</div>}
+
+    <div style={{ padding: "16px 16px 32px" }}>
+      {/* Insumos en mano */}
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>📦 Insumos en mano</div>
+          {hasStock && <div style={{ fontSize: 16, fontWeight: 700, color: "#185FA5" }}>{P(costoIns(stockOp, db.preciosIns))}</div>}
         </div>
-        {!hasStock ? <div style={{ fontSize: 12, color: "var(--color-text-secondary)", fontStyle: "italic" }}>No tenés insumos asignados aún.</div>
-          : INSUMOS.map(i => <div key={i.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "4px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+        {!hasStock
+          ? <div style={{ fontSize: 15, color: "var(--color-text-secondary)", fontStyle: "italic", padding: "8px 0" }}>No tenés insumos asignados aún.</div>
+          : INSUMOS.map(i => <div key={i.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 15, padding: "8px 0", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
             <span style={{ color: "var(--color-text-secondary)" }}>{i.emoji} {i.label}</span>
             <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-              <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>{P((stockOp[i.id] || 0) * (db.preciosIns[i.id] || 0))}</span>
-              <span style={{ fontWeight: 500, color: stockOp[i.id] === 0 ? "var(--color-text-tertiary)" : "var(--color-text-primary)", minWidth: 60, textAlign: "right" }}>{FN(stockOp[i.id])} {i.unit}</span>
+              <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>{P((stockOp[i.id] || 0) * (db.preciosIns[i.id] || 0))}</span>
+              <span style={{ fontWeight: 600, color: stockOp[i.id] === 0 ? "var(--color-text-tertiary)" : "var(--color-text-primary)", minWidth: 70, textAlign: "right" }}>{FN(stockOp[i.id])} {i.unit}</span>
             </div>
           </div>)}
       </Card>
-      <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 14 }}>
-        {[{ id: "visitas", l: "Registrar visita" }, { id: "cobros", l: "Registrar cobro" }].map(t => (
-          <button key={t.id} onClick={() => setOpTab(t.id)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: opTab === t.id ? 500 : 400, background: opTab === t.id ? "var(--color-background-primary)" : "transparent", color: opTab === t.id ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>{t.l}</button>
+
+      {/* Tabs visita / cobro */}
+      <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 14, padding: 4, marginBottom: 20 }}>
+        {[{ id: "visitas", l: "📋 Registrar visita" }, { id: "cobros", l: "💰 Registrar cobro" }].map(t => (
+          <button key={t.id} onClick={() => setOpTab(t.id)} style={{ flex: 1, padding: "14px 8px", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 15, fontWeight: opTab === t.id ? 700 : 400, background: opTab === t.id ? "var(--color-background-primary)" : "transparent", color: opTab === t.id ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>{t.l}</button>
         ))}
       </div>
-      <Sec>{opTab === "visitas" ? "Seleccioná cliente para visita" : "Seleccioná cliente para cobro"}</Sec>
+
+      <Sec mt={0}>{opTab === "visitas" ? "Seleccioná cliente para visita" : "Seleccioná cliente para cobro"}</Sec>
+
+      {/* Lista de clientes — tarjetas grandes */}
       {db.clientes.map(c => {
-        const uv = db.visitas.find(v => v.clienteId === c.id); const uc = db.cobros.find(co => co.clienteId === c.id);
-        const { bg, c: col } = avc(c.id); const dias = uv ? diasDesde(uv.fecha) : null; const enAlerta = dias === null || dias >= diasAlerta;
-        return <div key={c.id} onClick={() => { setClienteSel(c); setScreen(opTab === "visitas" ? "visita" : "cobro"); }}
-          style={{ background: "var(--color-background-primary)", borderRadius: 12, border: `0.5px solid ${enAlerta && opTab === "visitas" ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "12px 14px", marginBottom: 8, cursor: "pointer", display: "flex", alignItems: "center", gap: 12 }}
-          onMouseEnter={e => e.currentTarget.style.borderColor = "#378ADD"} onMouseLeave={e => e.currentTarget.style.borderColor = enAlerta && opTab === "visitas" ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}>
-          <Av nombre={c.nombre} bg={bg} c={col} />
+        const uv = db.visitas.find(v => v.clienteId === c.id);
+        const uc = db.cobros.find(co => co.clienteId === c.id);
+        const { bg, c: col } = avc(c.id);
+        const dias = uv ? diasDesde(uv.fecha) : null;
+        const enAlerta = dias === null || dias >= diasAlerta;
+        return <div key={c.id}
+          onClick={() => { setClienteSel(c); setScreen(opTab === "visitas" ? "visita" : "cobro"); }}
+          style={{ background: "var(--color-background-primary)", borderRadius: 16, border: `2px solid ${enAlerta && opTab === "visitas" ? "#F09595" : "var(--color-border-tertiary)"}`, padding: "18px 16px", marginBottom: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 16, WebkitTapHighlightColor: "transparent" }}
+          onTouchStart={e => e.currentTarget.style.background = "var(--color-background-secondary)"}
+          onTouchEnd={e => e.currentTarget.style.background = "var(--color-background-primary)"}
+        >
+          <Av nombre={c.nombre} bg={bg} c={col} size={52} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{c.nombre}</div>
-            <div style={{ fontSize: 12, color: enAlerta && opTab === "visitas" ? "#A32D2D" : "var(--color-text-secondary)", marginTop: 2 }}>
-              {opTab === "visitas" ? (uv ? `Última visita ${DA(uv.fecha)}` : "Sin visitas aún") : (uc ? `Último cobro ${DA(uc.fecha)}` : "Sin cobros")} · {c.maquinas} máq.
+            <div style={{ fontSize: 17, fontWeight: 700, color: "var(--color-text-primary)" }}>{c.nombre}</div>
+            <div style={{ fontSize: 14, color: enAlerta && opTab === "visitas" ? "#A32D2D" : "var(--color-text-secondary)", marginTop: 4 }}>
+              {opTab === "visitas"
+                ? (uv ? `Última visita ${DA(uv.fecha)}` : "Sin visitas aún")
+                : (uc ? `Último cobro ${DA(uc.fecha)}` : "Sin cobros")}
             </div>
+            <div style={{ fontSize: 13, color: "var(--color-text-tertiary)", marginTop: 2 }}>{c.maquinas} máquinas</div>
           </div>
-          <div style={{ fontSize: 18, color: "var(--color-text-secondary)" }}>›</div>
+          <div style={{ fontSize: 28, color: "#185FA5" }}>›</div>
         </div>;
       })}
-      <button onClick={() => setShowProponer(p => !p)} style={{ width: "100%", padding: 11, borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "#1D9E75", fontSize: 13, fontWeight: 500, cursor: "pointer", marginTop: 8 }}>{showProponer ? "Cancelar" : "+ Proponer nuevo cliente"}</button>
+
+      {/* Proponer cliente */}
+      <button onClick={() => setShowProponer(p => !p)} style={{ width: "100%", padding: 16, borderRadius: 14, border: "2px dashed var(--color-border-secondary)", background: "var(--color-background-primary)", color: "#1D9E75", fontSize: 16, fontWeight: 600, cursor: "pointer", marginTop: 4 }}>
+        {showProponer ? "Cancelar" : "+ Proponer nuevo cliente"}
+      </button>
       {showProponer && <ProponerCliente db={db} onDone={() => setShowProponer(false)} />}
     </div>
   </div>;
@@ -327,19 +341,20 @@ function OpApp({ db, onLogout }) {
 function ProponerCliente({ db, onDone }) {
   const [form, setForm] = useState({ nombre: "", direccion: "", maquinas: 1 }); const [saving, setSaving] = useState(false); const [ok, setOk] = useState(false);
   async function proponer() { if (!form.nombre.trim()) return; setSaving(true); await db.proponerCliente(form); setSaving(false); setOk(true); setTimeout(() => { setOk(false); onDone(); }, 2000); }
-  if (ok) return <div style={{ background: "#EAF3DE", borderRadius: 10, padding: "12px 14px", marginTop: 10, fontSize: 13, color: "#27500A" }}>✓ Propuesta enviada.</div>;
-  return <Card style={{ marginTop: 10 }}>
-    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Proponer nuevo cliente</div>
-    <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 12 }}>El admin deberá aprobarlo antes de que quede activo.</div>
-    {[["Nombre del lugar", "nombre"], ["Dirección", "direccion"]].map(([ph, k]) => <input key={k} placeholder={ph} value={form[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))} style={{ width: "100%", marginBottom: 8, padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />)}
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-      <label style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Máquinas estimadas:</label>
-      <input type="number" min="1" value={form.maquinas} onChange={e => setForm(p => ({ ...p, maquinas: e.target.value }))} style={{ width: 60, padding: "6px 8px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13 }} />
+  if (ok) return <div style={{ background: "#EAF3DE", borderRadius: 12, padding: "16px", marginTop: 12, fontSize: 15, color: "#27500A" }}>✓ Propuesta enviada. El admin la revisará pronto.</div>;
+  return <Card style={{ marginTop: 12 }}>
+    <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Proponer nuevo cliente</div>
+    <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 14 }}>El admin deberá aprobarlo antes de que quede activo.</div>
+    {[["Nombre del lugar", "nombre"], ["Dirección", "direccion"]].map(([ph, k]) => <input key={k} placeholder={ph} value={form[k]} onChange={e => setForm(p => ({ ...p, [k]: e.target.value }))} style={{ width: "100%", marginBottom: 10, padding: "14px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 16, boxSizing: "border-box" }} />)}
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+      <label style={{ fontSize: 15, color: "var(--color-text-secondary)" }}>Máquinas:</label>
+      <input type="number" min="1" value={form.maquinas} onChange={e => setForm(p => ({ ...p, maquinas: e.target.value }))} style={{ width: 80, padding: "12px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 16, textAlign: "center" }} />
     </div>
-    <button onClick={proponer} disabled={saving} style={{ padding: "10px 20px", borderRadius: 9, border: "none", background: saving ? "#888" : "#1D9E75", color: "#fff", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>{saving ? "Enviando…" : "Enviar propuesta"}</button>
+    <button onClick={proponer} disabled={saving} style={{ width: "100%", padding: 16, borderRadius: 12, border: "none", background: saving ? "#888" : "#1D9E75", color: "#fff", fontSize: 16, fontWeight: 600, cursor: "pointer" }}>{saving ? "Enviando…" : "Enviar propuesta"}</button>
   </Card>;
 }
 
+// ✅ FORM VISITA — MOBILE OPTIMIZADO
 function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
   const [ins, setIns] = useState(emptyIns()); const [usaManual, setUsaManual] = useState(false);
   const [cAnt, setCAnt] = useState(""); const [cAct, setCAct] = useState(""); const [servManual, setServManual] = useState("");
@@ -350,71 +365,90 @@ function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
     for (const i of INSUMOS) { if (insNum[i.id] > (stockOp[i.id] || 0)) { setErr(`No tenés suficiente ${i.label}`); return; } }
     setErr(""); onGuardar({ clienteId: cliente.id, contadorAnterior: parseFloat(cAnt) || 0, contador: parseFloat(cAct) || 0, serviciosManuales: usaManual ? parseInt(servManual) || 0 : 0, insumos: insNum, falla, detalleFalla: detF, observaciones: obs });
   }
-  return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
-    <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
-      <button onClick={onBack} style={{ fontSize: 20, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)" }}>←</button>
-      <div><div style={{ fontSize: 15, fontWeight: 600 }}>{cliente.nombre}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Registrar visita · {FF(hoy())}</div></div>
+  return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 520, margin: "0 auto" }}>
+    <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, position: "sticky", top: 0, zIndex: 10 }}>
+      <button onClick={onBack} style={{ fontSize: 28, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", padding: "0 4px" }}>←</button>
+      <div>
+        <div style={{ fontSize: 18, fontWeight: 700 }}>{cliente.nombre}</div>
+        <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>Registrar visita · {FF(hoy())}</div>
+      </div>
     </div>
-    <div style={{ padding: 16 }}>
-      <Sec>Servicios vendidos este período</Sec>
-      <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 12 }}>
-        <button onClick={() => setUsaManual(false)} style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: !usaManual ? 500 : 400, background: !usaManual ? "var(--color-background-primary)" : "transparent", color: !usaManual ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>Por contador</button>
-        <button onClick={() => setUsaManual(true)}  style={{ flex: 1, padding: "8px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 13, fontWeight: usaManual ? 500 : 400, background: usaManual ? "var(--color-background-primary)" : "transparent", color: usaManual ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>Manual</button>
+    <div style={{ padding: "16px 16px 40px" }}>
+      <Sec mt={0}>Servicios vendidos</Sec>
+      <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 14, padding: 4, marginBottom: 16 }}>
+        <button onClick={() => setUsaManual(false)} style={{ flex: 1, padding: "14px", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 15, fontWeight: !usaManual ? 700 : 400, background: !usaManual ? "var(--color-background-primary)" : "transparent", color: !usaManual ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>Por contador</button>
+        <button onClick={() => setUsaManual(true)}  style={{ flex: 1, padding: "14px", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 15, fontWeight: usaManual ? 700 : 400, background: usaManual ? "var(--color-background-primary)" : "transparent", color: usaManual ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>Manual</button>
       </div>
       {!usaManual && <Card style={{ marginBottom: 16 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           {[["Lectura anterior", cAnt, setCAnt], ["Lectura actual", cAct, setCAct]].map(([label, val, set]) => (
-            <div key={label}><div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>{label}</div>
-              <input type="number" min="0" placeholder="0" value={val} onChange={e => set(e.target.value)} style={{ width: "100%", padding: 8, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 14, boxSizing: "border-box" }} /></div>
+            <div key={label}>
+              <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 6 }}>{label}</div>
+              <input type="number" inputMode="numeric" min="0" placeholder="0" value={val} onChange={e => set(e.target.value)} style={{ width: "100%", padding: "14px 12px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 20, fontWeight: 600, boxSizing: "border-box", textAlign: "center" }} />
+            </div>
           ))}
         </div>
-        {cafesContador > 0 && <div style={{ marginTop: 10, background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 12, color: "#0C447C" }}>Servicios registrados</span><span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{cafesContador.toLocaleString("es-AR")}</span>
+        {cafesContador > 0 && <div style={{ marginTop: 14, background: "#E6F1FB", borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 14, color: "#0C447C" }}>Servicios registrados</span>
+          <span style={{ fontSize: 22, fontWeight: 700, color: "#0C447C" }}>{cafesContador.toLocaleString("es-AR")}</span>
         </div>}
       </Card>}
       {usaManual && <Card style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Cantidad de servicios vendidos</div>
-        <input type="number" min="0" placeholder="0" value={servManual} onChange={e => setServManual(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 20, fontWeight: 600, boxSizing: "border-box", textAlign: "center" }} />
-        {servManual > 0 && <div style={{ marginTop: 10, background: "#E6F1FB", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 12, color: "#0C447C" }}>Servicios registrados</span><span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{parseInt(servManual).toLocaleString("es-AR")}</span>
+        <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 8 }}>Cantidad de servicios vendidos</div>
+        <input type="number" inputMode="numeric" min="0" placeholder="0" value={servManual} onChange={e => setServManual(e.target.value)} style={{ width: "100%", padding: "16px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 32, fontWeight: 700, boxSizing: "border-box", textAlign: "center" }} />
+        {servManual > 0 && <div style={{ marginTop: 14, background: "#E6F1FB", borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 14, color: "#0C447C" }}>Servicios registrados</span>
+          <span style={{ fontSize: 22, fontWeight: 700, color: "#0C447C" }}>{parseInt(servManual).toLocaleString("es-AR")}</span>
         </div>}
       </Card>}
+
       <Sec>Insumos a dejar</Sec>
       {INSUMOS.map(ins_i => {
         const disp = stockOp[ins_i.id] || 0, over = (parseFloat(ins[ins_i.id]) || 0) > disp;
-        return <div key={ins_i.id} style={{ background: "var(--color-background-primary)", borderRadius: 10, border: `0.5px solid ${over ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "10px 14px", marginBottom: 8, display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 16 }}>{ins_i.emoji}</span>
-          <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{ins_i.label}</div><div style={{ fontSize: 11, color: disp === 0 ? "#A32D2D" : "var(--color-text-secondary)" }}>En mano: {FN(disp)} {ins_i.unit}</div></div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <button onClick={() => setIns(p => ({ ...p, [ins_i.id]: Math.max(0, (parseFloat(p[ins_i.id]) || 0) - ins_i.step).toString() }))} style={{ width: 28, height: 28, borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
-              <input type="number" min="0" step={ins_i.step} placeholder="0" value={ins[ins_i.id]} onChange={e => setIns(p => ({ ...p, [ins_i.id]: e.target.value }))} style={{ width: 65, textAlign: "center", padding: "5px 4px", borderRadius: 8, border: `0.5px solid ${over ? "var(--color-border-danger)" : "var(--color-border-secondary)"}`, background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 14 }} />
-              <button onClick={() => setIns(p => ({ ...p, [ins_i.id]: Math.min(disp, (parseFloat(p[ins_i.id]) || 0) + ins_i.step).toString() }))} style={{ width: 28, height: 28, borderRadius: 6, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
-            </div>
-            <div style={{ fontSize: 10, color: "var(--color-text-tertiary)" }}>paso {ins_i.step} {ins_i.unit}</div>
+        return <div key={ins_i.id} style={{ background: "var(--color-background-primary)", borderRadius: 14, border: `2px solid ${over ? "#F09595" : "var(--color-border-tertiary)"}`, padding: "14px 16px", marginBottom: 10, display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 24 }}>{ins_i.emoji}</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 600 }}>{ins_i.label}</div>
+            <div style={{ fontSize: 13, color: disp === 0 ? "#A32D2D" : "var(--color-text-secondary)", marginTop: 2 }}>En mano: {FN(disp)} {ins_i.unit}</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={() => setIns(p => ({ ...p, [ins_i.id]: Math.max(0, (parseFloat(p[ins_i.id]) || 0) - ins_i.step).toString() }))}
+              style={{ width: 44, height: 44, borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", cursor: "pointer", fontSize: 22, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+            <input type="number" inputMode="decimal" min="0" step={ins_i.step} placeholder="0" value={ins[ins_i.id]} onChange={e => setIns(p => ({ ...p, [ins_i.id]: e.target.value }))}
+              style={{ width: 70, textAlign: "center", padding: "10px 4px", borderRadius: 10, border: `1.5px solid ${over ? "#F09595" : "var(--color-border-secondary)"}`, background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 18, fontWeight: 600 }} />
+            <button onClick={() => setIns(p => ({ ...p, [ins_i.id]: Math.min(disp, (parseFloat(p[ins_i.id]) || 0) + ins_i.step).toString() }))}
+              style={{ width: 44, height: 44, borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", cursor: "pointer", fontSize: 22, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
           </div>
         </div>;
       })}
-      {costo > 0 && <div style={{ background: "#E6F1FB", borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 13, color: "#0C447C" }}>Costo de esta entrega</span><span style={{ fontSize: 16, fontWeight: 700, color: "#0C447C" }}>{P(costo)}</span>
+
+      {costo > 0 && <div style={{ background: "#E6F1FB", borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 15, color: "#0C447C" }}>Costo de esta entrega</span>
+        <span style={{ fontSize: 20, fontWeight: 700, color: "#0C447C" }}>{P(costo)}</span>
       </div>}
-      <Sec mt={16}>¿Hubo algún problema?</Sec>
-      <div style={{ background: "var(--color-background-primary)", borderRadius: 10, border: `0.5px solid ${falla ? "var(--color-border-danger)" : "var(--color-border-tertiary)"}`, padding: "10px 14px", marginBottom: falla ? 8 : 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 16 }}>⚠️</span><div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>Falla en la máquina</div>
-          <button onClick={() => setFalla(p => !p)} style={{ padding: "5px 14px", borderRadius: 20, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 500, background: falla ? "#FCEBEB" : "var(--color-background-secondary)", color: falla ? "#A32D2D" : "var(--color-text-secondary)" }}>{falla ? "Sí" : "No"}</button>
+
+      <Sec mt={8}>¿Hubo algún problema?</Sec>
+      <div style={{ background: "var(--color-background-primary)", borderRadius: 14, border: `2px solid ${falla ? "#F09595" : "var(--color-border-tertiary)"}`, padding: "16px", marginBottom: falla ? 10 : 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={{ fontSize: 24 }}>⚠️</span>
+          <div style={{ flex: 1, fontSize: 16, fontWeight: 600 }}>Falla en la máquina</div>
+          <button onClick={() => setFalla(p => !p)} style={{ padding: "10px 20px", borderRadius: 10, border: "none", cursor: "pointer", fontSize: 15, fontWeight: 600, background: falla ? "#FCEBEB" : "var(--color-background-secondary)", color: falla ? "#A32D2D" : "var(--color-text-secondary)" }}>{falla ? "Sí" : "No"}</button>
         </div>
       </div>
-      {falla && <textarea placeholder="Describí el problema…" value={detF} onChange={e => setDetF(e.target.value)} style={{ width: "100%", borderRadius: 10, border: "0.5px solid var(--color-border-danger)", padding: "10px 12px", fontSize: 13, color: "var(--color-text-primary)", background: "var(--color-background-primary)", resize: "none", height: 70, marginBottom: 16, boxSizing: "border-box" }} />}
-      <Sec>Observaciones</Sec>
-      <textarea placeholder="Notas libres (opcional)…" value={obs} onChange={e => setObs(e.target.value)} style={{ width: "100%", borderRadius: 10, border: "0.5px solid var(--color-border-tertiary)", padding: "10px 12px", fontSize: 13, color: "var(--color-text-primary)", background: "var(--color-background-primary)", resize: "none", height: 70, marginBottom: 16, boxSizing: "border-box" }} />
-      {err && <div style={{ background: "#FCEBEB", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#A32D2D" }}>{err}</div>}
-      <button onClick={guardar} disabled={saving} style={{ width: "100%", padding: 14, borderRadius: 12, border: "none", background: saving ? "#888" : "#185FA5", color: "#fff", fontSize: 15, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer" }}>{saving ? "Guardando…" : "Guardar visita"}</button>
+      {falla && <textarea placeholder="Describí el problema…" value={detF} onChange={e => setDetF(e.target.value)} style={{ width: "100%", borderRadius: 12, border: "2px solid #F09595", padding: "14px", fontSize: 16, color: "var(--color-text-primary)", background: "var(--color-background-primary)", resize: "none", height: 90, marginBottom: 20, boxSizing: "border-box" }} />}
+
+      <Sec>Observaciones (opcional)</Sec>
+      <textarea placeholder="Notas libres…" value={obs} onChange={e => setObs(e.target.value)} style={{ width: "100%", borderRadius: 12, border: "0.5px solid var(--color-border-tertiary)", padding: "14px", fontSize: 16, color: "var(--color-text-primary)", background: "var(--color-background-primary)", resize: "none", height: 90, marginBottom: 20, boxSizing: "border-box" }} />
+
+      {err && <div style={{ background: "#FCEBEB", borderRadius: 12, padding: "14px 16px", marginBottom: 16, fontSize: 15, color: "#A32D2D" }}>{err}</div>}
+      <button onClick={guardar} disabled={saving} style={{ width: "100%", padding: 18, borderRadius: 14, border: "none", background: saving ? "#888" : "#185FA5", color: "#fff", fontSize: 18, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer" }}>
+        {saving ? "Guardando…" : "✓ Guardar visita"}
+      </button>
     </div>
   </div>;
 }
 
-// ✅ FASE 3: FormCobro con adjunto de comprobante
+// ✅ FORM COBRO — MOBILE OPTIMIZADO
 function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, onBack }) {
   const [monto, setMonto] = useState(""); const [medio, setMedio] = useState("transferencia");
   const [nota, setNota] = useState(""); const [err, setErr] = useState("");
@@ -426,94 +460,98 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
   const totalCob = cobros.reduce((s, c) => s + c.monto, 0), saldo = totalFact - totalCob;
 
   function handleArchivo(e) {
-    const f = e.target.files[0];
-    if (!f) return;
-    setArchivo(f);
-    const reader = new FileReader();
-    reader.onload = ev => setPreview(ev.target.result);
-    reader.readAsDataURL(f);
+    const f = e.target.files[0]; if (!f) return; setArchivo(f);
+    const reader = new FileReader(); reader.onload = ev => setPreview(ev.target.result); reader.readAsDataURL(f);
   }
-
   async function guardar() {
     if (!monto || parseFloat(monto) <= 0) { setErr("Ingresá un monto válido."); return; }
     setErr(""); setSubiendo(true);
     let comprobanteUrl = null;
-    if (archivo) {
-      try { comprobanteUrl = await subirComprobante(archivo); }
-      catch (e) { setErr("Error al subir el comprobante. Intentá de nuevo."); setSubiendo(false); return; }
-    }
+    if (archivo) { try { comprobanteUrl = await subirComprobante(archivo); } catch (e) { setErr("Error al subir el comprobante."); setSubiendo(false); return; } }
     setSubiendo(false);
     onGuardar({ clienteId: cliente.id, monto: parseFloat(monto), medio, nota, comprobanteUrl });
   }
-
   const isSaving = saving || subiendo;
 
-  return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 480, margin: "0 auto" }}>
-    <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, position: "sticky", top: 0, zIndex: 10 }}>
-      <button onClick={onBack} style={{ fontSize: 20, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)" }}>←</button>
-      <div><div style={{ fontSize: 15, fontWeight: 600 }}>{cliente.nombre}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Registrar cobro · {FF(hoy())}</div></div>
-    </div>
-    <div style={{ padding: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
-        <Met label="Total a cobrar" value={P(totalFact)} sub={`${servFact} serv.`} />
-        <Met label="Cobrado"        value={P(totalCob)}  sub={`${cobros.length} pagos`} />
-        <Met label="Saldo"          value={P(saldo)}     sub="" warn={saldo > 0} />
+  return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 520, margin: "0 auto" }}>
+    <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "16px 20px", display: "flex", alignItems: "center", gap: 14, position: "sticky", top: 0, zIndex: 10 }}>
+      <button onClick={onBack} style={{ fontSize: 28, background: "none", border: "none", cursor: "pointer", color: "var(--color-text-secondary)", padding: "0 4px" }}>←</button>
+      <div>
+        <div style={{ fontSize: 18, fontWeight: 700 }}>{cliente.nombre}</div>
+        <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>Registrar cobro · {FF(hoy())}</div>
       </div>
+    </div>
+    <div style={{ padding: "16px 16px 40px" }}>
+      {/* Resumen */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+        <Met label="A cobrar" value={P(totalFact)} sub={`${servFact} serv.`} />
+        <Met label="Cobrado"  value={P(totalCob)}  sub={`${cobros.length} pagos`} />
+        <Met label="Saldo"    value={P(saldo)}     sub="" warn={saldo > 0} />
+      </div>
+
       {cobros.length > 0 && <><Sec>Cobros anteriores</Sec>
         {cobros.map(c => { const mp = MEDIOS_PAGO.find(m => m.id === c.medio);
-          return <div key={c.id} style={{ background: "var(--color-background-primary)", borderRadius: 10, border: "0.5px solid var(--color-border-tertiary)", padding: "10px 14px", marginBottom: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 18 }}>{mp?.emoji}</span>
-              <div style={{ flex: 1 }}><div style={{ fontSize: 13, fontWeight: 500 }}>{P(c.monto)}</div><div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>{mp?.label} · {FF(c.fecha)}{c.nota ? ` · ${c.nota}` : ""}</div></div>
-              {c.comprobanteUrl && <a href={c.comprobanteUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#185FA5", textDecoration: "none", background: "#E6F1FB", padding: "3px 8px", borderRadius: 6 }}>📎 Ver</a>}
+          return <div key={c.id} style={{ background: "var(--color-background-primary)", borderRadius: 12, border: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", marginBottom: 8, display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 24 }}>{mp?.emoji}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{P(c.monto)}</div>
+              <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>{mp?.label} · {FF(c.fecha)}{c.nota ? ` · ${c.nota}` : ""}</div>
             </div>
+            {c.comprobanteUrl && <a href={c.comprobanteUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "#185FA5", textDecoration: "none", background: "#E6F1FB", padding: "6px 12px", borderRadius: 8 }}>📎 Ver</a>}
           </div>; })}
       </>}
-      <Sec mt={16}>Nuevo cobro</Sec>
+
+      <Sec mt={8}>Nuevo cobro</Sec>
       <Card style={{ marginBottom: 16 }}>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 6 }}>Monto cobrado</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 18, fontWeight: 600, color: "var(--color-text-secondary)" }}>$</span>
-            <input type="number" min="0" placeholder="0" value={monto} onChange={e => setMonto(e.target.value)} style={{ flex: 1, padding: "10px 12px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 20, fontWeight: 600 }} />
+        {/* Monto */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 8 }}>Monto cobrado</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 24, fontWeight: 700, color: "var(--color-text-secondary)" }}>$</span>
+            <input type="number" inputMode="numeric" min="0" placeholder="0" value={monto} onChange={e => setMonto(e.target.value)} style={{ flex: 1, padding: "16px", borderRadius: 12, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 28, fontWeight: 700 }} />
           </div>
-          {saldo > 0 && <button onClick={() => setMonto(saldo.toString())} style={{ marginTop: 8, fontSize: 11, color: "#185FA5", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Cargar saldo pendiente ({P(saldo)})</button>}
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 8 }}>Medio de pago</div>
-          <div style={{ display: "flex", gap: 10 }}>
-            {MEDIOS_PAGO.map(m => <button key={m.id} onClick={() => setMedio(m.id)} style={{ flex: 1, padding: "12px", borderRadius: 10, border: `2px solid ${medio === m.id ? "#185FA5" : "var(--color-border-tertiary)"}`, background: medio === m.id ? "#E6F1FB" : "var(--color-background-primary)", color: medio === m.id ? "#0C447C" : "var(--color-text-secondary)", cursor: "pointer", fontSize: 14, fontWeight: medio === m.id ? 600 : 400, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><span style={{ fontSize: 20 }}>{m.emoji}</span>{m.label}</button>)}
-          </div>
-        </div>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 4 }}>Nota (opcional)</div>
-          <input placeholder="Ej: número de transferencia…" value={nota} onChange={e => setNota(e.target.value)} style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, boxSizing: "border-box" }} />
+          {saldo > 0 && <button onClick={() => setMonto(saldo.toString())} style={{ marginTop: 10, fontSize: 14, color: "#185FA5", background: "#E6F1FB", border: "none", cursor: "pointer", padding: "8px 16px", borderRadius: 8, fontWeight: 500 }}>Cargar saldo pendiente ({P(saldo)})</button>}
         </div>
 
-        {/* ✅ ADJUNTAR COMPROBANTE */}
+        {/* Medio de pago */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 10 }}>Medio de pago</div>
+          <div style={{ display: "flex", gap: 12 }}>
+            {MEDIOS_PAGO.map(m => <button key={m.id} onClick={() => setMedio(m.id)} style={{ flex: 1, padding: "16px", borderRadius: 12, border: `3px solid ${medio === m.id ? "#185FA5" : "var(--color-border-tertiary)"}`, background: medio === m.id ? "#E6F1FB" : "var(--color-background-primary)", color: medio === m.id ? "#0C447C" : "var(--color-text-secondary)", cursor: "pointer", fontSize: 16, fontWeight: medio === m.id ? 700 : 400, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <span style={{ fontSize: 24 }}>{m.emoji}</span>{m.label}
+            </button>)}
+          </div>
+        </div>
+
+        {/* Nota */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 8 }}>Nota (opcional)</div>
+          <input placeholder="Ej: número de transferencia…" value={nota} onChange={e => setNota(e.target.value)} style={{ width: "100%", padding: "14px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 16, boxSizing: "border-box" }} />
+        </div>
+
+        {/* Comprobante */}
         <div>
-          <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginBottom: 8 }}>Comprobante de transferencia (opcional)</div>
-          {!preview ? (
-            <label style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: "0.5px dashed var(--color-border-secondary)", cursor: "pointer", background: "var(--color-background-secondary)" }}>
-              <span style={{ fontSize: 20 }}>📎</span>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>Adjuntar imagen</div>
-                <div style={{ fontSize: 11, color: "var(--color-text-secondary)" }}>Foto del comprobante o captura de pantalla</div>
-              </div>
-              <input type="file" accept="image/*" capture="environment" onChange={handleArchivo} style={{ display: "none" }} />
-            </label>
-          ) : (
-            <div style={{ position: "relative" }}>
-              <img src={preview} alt="comprobante" style={{ width: "100%", borderRadius: 10, maxHeight: 200, objectFit: "cover", border: "0.5px solid var(--color-border-tertiary)" }} />
-              <button onClick={() => { setArchivo(null); setPreview(null); }} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.5)", color: "#fff", cursor: "pointer", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
-              <div style={{ marginTop: 6, fontSize: 11, color: "#1D9E75" }}>✓ {archivo?.name}</div>
-            </div>
-          )}
+          <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 10 }}>Comprobante (opcional)</div>
+          {!preview
+            ? <label style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px", borderRadius: 12, border: "2px dashed var(--color-border-secondary)", cursor: "pointer", background: "var(--color-background-secondary)" }}>
+                <span style={{ fontSize: 28 }}>📎</span>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--color-text-primary)" }}>Adjuntar imagen</div>
+                  <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginTop: 2 }}>Foto del comprobante</div>
+                </div>
+                <input type="file" accept="image/*" capture="environment" onChange={handleArchivo} style={{ display: "none" }} />
+              </label>
+            : <div style={{ position: "relative" }}>
+                <img src={preview} alt="comprobante" style={{ width: "100%", borderRadius: 12, maxHeight: 220, objectFit: "cover", border: "0.5px solid var(--color-border-tertiary)" }} />
+                <button onClick={() => { setArchivo(null); setPreview(null); }} style={{ position: "absolute", top: 10, right: 10, width: 36, height: 36, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", cursor: "pointer", fontSize: 18, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                <div style={{ marginTop: 8, fontSize: 13, color: "#1D9E75" }}>✓ {archivo?.name}</div>
+              </div>}
         </div>
       </Card>
-      {err && <div style={{ background: "#FCEBEB", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 13, color: "#A32D2D" }}>{err}</div>}
-      <button onClick={guardar} disabled={isSaving} style={{ width: "100%", padding: 14, borderRadius: 12, border: "none", background: isSaving ? "#888" : "#1D9E75", color: "#fff", fontSize: 15, fontWeight: 600, cursor: isSaving ? "not-allowed" : "pointer" }}>
-        {subiendo ? "Subiendo comprobante…" : saving ? "Guardando…" : "Registrar cobro"}
+
+      {err && <div style={{ background: "#FCEBEB", borderRadius: 12, padding: "14px 16px", marginBottom: 16, fontSize: 15, color: "#A32D2D" }}>{err}</div>}
+      <button onClick={guardar} disabled={isSaving} style={{ width: "100%", padding: 18, borderRadius: 14, border: "none", background: isSaving ? "#888" : "#1D9E75", color: "#fff", fontSize: 18, fontWeight: 700, cursor: isSaving ? "not-allowed" : "pointer" }}>
+        {subiendo ? "Subiendo comprobante…" : saving ? "Guardando…" : "✓ Registrar cobro"}
       </button>
     </div>
   </div>;
@@ -847,7 +885,7 @@ function DetalleCli({ cliente, db, onBack }) {
           <div style={{ display:"flex",alignItems:"center",gap:12,marginBottom: c.comprobanteUrl ? 10 : 0 }}>
             <span style={{ fontSize:22 }}>{mp?.emoji}</span>
             <div style={{ flex:1 }}><div style={{ fontSize:15,fontWeight:700,color:"#27500A" }}>{P(c.monto)}</div><div style={{ fontSize:12,color:"var(--color-text-secondary)" }}>{mp?.label} · {FF(c.fecha)}{c.nota?` · ${c.nota}`:""}</div></div>
-            {c.comprobanteUrl && <a href={c.comprobanteUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:"#185FA5",textDecoration:"none",background:"#E6F1FB",padding:"4px 10px",borderRadius:6,whiteSpace:"nowrap" }}>📎 Ver comprobante</a>}
+            {c.comprobanteUrl && <a href={c.comprobanteUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:11,color:"#185FA5",textDecoration:"none",background:"#E6F1FB",padding:"4px 10px",borderRadius:6,whiteSpace:"nowrap" }}>📎 Ver</a>}
           </div>
           {c.comprobanteUrl && <img src={c.comprobanteUrl} alt="comprobante" style={{ width:"100%",borderRadius:8,maxHeight:160,objectFit:"cover",border:"0.5px solid var(--color-border-tertiary)" }} />}
         </Card>;})}
