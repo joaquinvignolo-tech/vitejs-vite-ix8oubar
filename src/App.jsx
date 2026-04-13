@@ -971,3 +971,4 @@ function TabCfg({ db }) {
     </div>)}
     <button onClick={guardarConfig} disabled={saving} style={{ padding:"10px 20px",borderRadius:10,border:"none",background:saved?"#1D9E75":saving?"#888":"#185FA5",color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer",marginBottom:24 }}>{saved?"✓ Guardado":saving?"Guardando…":"Guardar cambios"}</button>
   </div>;
+  
