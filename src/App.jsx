@@ -231,7 +231,7 @@ function OpApp({ db, onLogout }) {
   const stockOp = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totalRecibido[i.id] || 0) - (totalEntregado[i.id] || 0))]));
   async function handleGuardarVisita(v) { setSaving(true); await db.addVisita(v); setSaving(false); setSaved(v); setScreen("ok-visita"); }
   async function handleGuardarCobro(c) { setSaving(true); await db.addCobro(c); setSaving(false); setSavedCobro(c); setScreen("ok-cobro"); }
-  if (screen === "visita" && clienteSel) return <FormVisita cliente={clienteSel} stockOp={stockOp} precios={db.preciosIns} saving={saving} onGuardar={handleGuardarVisita} onBack={() => setScreen("home")} />;
+  if (screen === "visita" && clienteSel) return <FormVisita cliente={clienteSel} stockOp={stockOp} precios={db.preciosIns} visitas={db.visitas.filter(v => v.clienteId === clienteSel.id)} saving={saving} onGuardar={handleGuardarVisita} onBack={() => setScreen("home")} />;
   if (screen === "cobro" && clienteSel)  return <FormCobro  cliente={clienteSel} precioServ={db.precioServ} visitas={db.visitas.filter(v => v.clienteId === clienteSel.id)} cobros={db.cobros.filter(c => c.clienteId === clienteSel.id)} saving={saving} onGuardar={handleGuardarCobro} onBack={() => setScreen("home")} />;
   if (screen === "ok-visita") {
     const c = db.clientes.find(c => c.id === saved?.clienteId);
@@ -340,12 +340,13 @@ function ProponerCliente({ db, onDone }) {
   </Card>;
 }
 
-function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
+function FormVisita({ cliente, stockOp, precios, visitas, saving, onGuardar, onBack }) {
   const [ins, setIns] = useState(emptyIns()); const [usaManual, setUsaManual] = useState(false);
   const [cAnt, setCAnt] = useState(""); const [cAct, setCAct] = useState(""); const [servManual, setServManual] = useState("");
   const [falla, setFalla] = useState(false); const [detF, setDetF] = useState(""); const [obs, setObs] = useState(""); const [err, setErr] = useState("");
   const insNum = Object.fromEntries(Object.entries(ins).map(([k, v]) => [k, parseFloat(v) || 0]));
   const costo = costoIns(insNum, precios); const cafesContador = Math.max(0, (parseFloat(cAct) || 0) - (parseFloat(cAnt) || 0));
+  const ultimasVisitas = visitas.slice(0, 3);
   function guardar() {
     for (const i of INSUMOS) { if (insNum[i.id] > (stockOp[i.id] || 0)) { setErr(`No tenés suficiente ${i.label}`); return; } }
     setErr(""); onGuardar({ clienteId: cliente.id, contadorAnterior: parseFloat(cAnt) || 0, contador: parseFloat(cAct) || 0, serviciosManuales: usaManual ? parseInt(servManual) || 0 : 0, insumos: insNum, falla, detalleFalla: detF, observaciones: obs });
@@ -411,6 +412,24 @@ function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
         <span style={{ fontSize: 15, color: "#0C447C" }}>Costo de esta entrega</span>
         <span style={{ fontSize: 20, fontWeight: 700, color: "#0C447C" }}>{P(costo)}</span>
       </div>}
+
+      {ultimasVisitas.length > 0 && <>
+        <Sec mt={8}>Últimas visitas</Sec>
+        {ultimasVisitas.map((v, idx) => {
+          const cafes = serviciosDeVisita(v);
+          return <Card key={idx} style={{ marginBottom: 8, background: "var(--color-background-secondary)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--color-text-primary)" }}>{FF(v.fecha)}</span>
+              {cafes > 0 && <span style={{ fontSize: 12, background: "#E6F1FB", color: "#0C447C", padding: "3px 10px", borderRadius: 20, fontWeight: 600 }}>{cafes.toLocaleString()} servicios</span>}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {INSUMOS.filter(i => (v.insumos[i.id] || 0) > 0).map(i => <Pill key={i.id}>{i.emoji} {FN(v.insumos[i.id])} {i.unit}</Pill>)}
+              {INSUMOS.every(i => !(v.insumos[i.id] || 0)) && <span style={{ fontSize: 12, color: "var(--color-text-tertiary)", fontStyle: "italic" }}>Sin insumos entregados</span>}
+            </div>
+            {v.falla && <div style={{ marginTop: 6, fontSize: 11, color: "#A32D2D", background: "#FCEBEB", padding: "4px 8px", borderRadius: 6 }}>⚠ Falla reportada</div>}
+          </Card>;
+        })}
+      </>}
 
       <Sec mt={8}>¿Hubo algún problema?</Sec>
       <div style={{ background: "var(--color-background-primary)", borderRadius: 14, border: `2px solid ${falla ? "#F09595" : "var(--color-border-tertiary)"}`, padding: "16px", marginBottom: falla ? 10 : 20 }}>
