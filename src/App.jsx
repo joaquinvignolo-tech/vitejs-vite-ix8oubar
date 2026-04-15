@@ -48,6 +48,18 @@ function diasDesde(f) { return Math.floor((new Date() - new Date(f)) / 86400000)
 function hoy() { return new Date().toISOString().split("T")[0]; }
 function horaActual() { return new Date().toTimeString().slice(0, 5); }
 
+function consolidarEntragas(lista) {
+  const mapa = {};
+  lista.forEach(e => {
+    if (!mapa[e.fecha]) { mapa[e.fecha] = { ...e, insumos: { ...e.insumos } }; }
+    else {
+      INSUMOS.forEach(i => { mapa[e.fecha].insumos[i.id] = (mapa[e.fecha].insumos[i.id] || 0) + (e.insumos[i.id] || 0); });
+      if (e.nota && mapa[e.fecha].nota !== e.nota) mapa[e.fecha].nota = [mapa[e.fecha].nota, e.nota].filter(Boolean).join(" + ");
+    }
+  });
+  return Object.values(mapa).sort((a, b) => b.fecha.localeCompare(a.fecha));
+}
+
 async function subirComprobante(file) {
   const ext = file.name.split(".").pop();
   const nombre = `cobro_${Date.now()}.${ext}`;
@@ -61,12 +73,7 @@ const AVC = ["#E6F1FB:#0C447C","#E1F5EE:#085041","#FAEEDA:#633806","#FBEAF0:#722
 function avc(id) { const [bg, c] = AVC[(id - 1) % AVC.length].split(":"); return { bg, c }; }
 
 function Av({ nombre, size = 36, bg = "#E6F1FB", c = "#0C447C" }) {
-  const iniciales = nombre.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
-  return (
-    <div style={{ width: size, height: size, minWidth: size, borderRadius: "50%", background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .34, fontWeight: 700, flexShrink: 0, overflow: "hidden", userSelect: "none", lineHeight: 1 }}>
-      {iniciales}
-    </div>
-  );
+  return <div style={{ width: size, height: size, borderRadius: "50%", background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .38, fontWeight: 700, flexShrink: 0 }}>{nombre.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()}</div>;
 }
 function Sec({ children, mt = 4 }) {
   return <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10, marginTop: mt }}>{children}</div>;
@@ -114,6 +121,7 @@ function OkScreen({ titulo, sub, onVolver, children }) {
   </div>;
 }
 
+// Meta viewport tag para mobile
 const MetaViewport = () => {
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
@@ -222,6 +230,7 @@ function Login({ onLogin }) {
   </div>;
 }
 
+// ✅ PANEL OPERADOR — OPTIMIZADO PARA MOBILE
 function OpApp({ db, onLogout }) {
   const [screen, setScreen] = useState("home"); const [clienteSel, setClienteSel] = useState(null);
   const [saved, setSaved] = useState(null); const [savedCobro, setSavedCobro] = useState(null);
@@ -257,6 +266,7 @@ function OpApp({ db, onLogout }) {
   const diasAlerta = db.diasAlerta || DIAS_ALERTA_DEF;
 
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)", maxWidth: 520, margin: "0 auto" }}>
+    {/* Header */}
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
       <div>
         <div style={{ fontSize: 20, fontWeight: 700 }}>☕ CaféVending</div>
@@ -266,6 +276,7 @@ function OpApp({ db, onLogout }) {
     </div>
 
     <div style={{ padding: "16px 16px 32px" }}>
+      {/* Insumos en mano */}
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 16, fontWeight: 600 }}>📦 Insumos en mano</div>
@@ -282,6 +293,7 @@ function OpApp({ db, onLogout }) {
           </div>)}
       </Card>
 
+      {/* Tabs visita / cobro */}
       <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 14, padding: 4, marginBottom: 20 }}>
         {[{ id: "visitas", l: "📋 Registrar visita" }, { id: "cobros", l: "💰 Registrar cobro" }].map(t => (
           <button key={t.id} onClick={() => setOpTab(t.id)} style={{ flex: 1, padding: "14px 8px", borderRadius: 12, border: "none", cursor: "pointer", fontSize: 15, fontWeight: opTab === t.id ? 700 : 400, background: opTab === t.id ? "var(--color-background-primary)" : "transparent", color: opTab === t.id ? "var(--color-text-primary)" : "var(--color-text-secondary)" }}>{t.l}</button>
@@ -290,6 +302,7 @@ function OpApp({ db, onLogout }) {
 
       <Sec mt={0}>{opTab === "visitas" ? "Seleccioná cliente para visita" : "Seleccioná cliente para cobro"}</Sec>
 
+      {/* Lista de clientes — tarjetas grandes */}
       {db.clientes.map(c => {
         const uv = db.visitas.find(v => v.clienteId === c.id);
         const uc = db.cobros.find(co => co.clienteId === c.id);
@@ -303,8 +316,8 @@ function OpApp({ db, onLogout }) {
           onTouchEnd={e => e.currentTarget.style.background = "var(--color-background-primary)"}
         >
           <Av nombre={c.nombre} bg={bg} c={col} size={52} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 700, color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.nombre}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "var(--color-text-primary)" }}>{c.nombre}</div>
             <div style={{ fontSize: 14, color: enAlerta && opTab === "visitas" ? "#A32D2D" : "var(--color-text-secondary)", marginTop: 4 }}>
               {opTab === "visitas"
                 ? (uv ? `Última visita ${DA(uv.fecha)}` : "Sin visitas aún")
@@ -312,10 +325,11 @@ function OpApp({ db, onLogout }) {
             </div>
             <div style={{ fontSize: 13, color: "var(--color-text-tertiary)", marginTop: 2 }}>{c.maquinas} máquinas</div>
           </div>
-          <div style={{ fontSize: 28, color: "#185FA5", flexShrink: 0 }}>›</div>
+          <div style={{ fontSize: 28, color: "#185FA5" }}>›</div>
         </div>;
       })}
 
+      {/* Proponer cliente */}
       <button onClick={() => setShowProponer(p => !p)} style={{ width: "100%", padding: 16, borderRadius: 14, border: "2px dashed var(--color-border-secondary)", background: "var(--color-background-primary)", color: "#1D9E75", fontSize: 16, fontWeight: 600, cursor: "pointer", marginTop: 4 }}>
         {showProponer ? "Cancelar" : "+ Proponer nuevo cliente"}
       </button>
@@ -340,6 +354,7 @@ function ProponerCliente({ db, onDone }) {
   </Card>;
 }
 
+// ✅ FORM VISITA — MOBILE OPTIMIZADO
 function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
   const [ins, setIns] = useState(emptyIns()); const [usaManual, setUsaManual] = useState(false);
   const [cAnt, setCAnt] = useState(""); const [cAct, setCAct] = useState(""); const [servManual, setServManual] = useState("");
@@ -433,6 +448,7 @@ function FormVisita({ cliente, stockOp, precios, saving, onGuardar, onBack }) {
   </div>;
 }
 
+// ✅ FORM COBRO — MOBILE OPTIMIZADO
 function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, onBack }) {
   const [monto, setMonto] = useState(""); const [medio, setMedio] = useState("transferencia");
   const [nota, setNota] = useState(""); const [err, setErr] = useState("");
@@ -466,6 +482,7 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
       </div>
     </div>
     <div style={{ padding: "16px 16px 40px" }}>
+      {/* Resumen */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
         <Met label="A cobrar" value={P(totalFact)} sub={`${servFact} serv.`} />
         <Met label="Cobrado"  value={P(totalCob)}  sub={`${cobros.length} pagos`} />
@@ -486,6 +503,7 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
 
       <Sec mt={8}>Nuevo cobro</Sec>
       <Card style={{ marginBottom: 16 }}>
+        {/* Monto */}
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 8 }}>Monto cobrado</div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -495,6 +513,7 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
           {saldo > 0 && <button onClick={() => setMonto(saldo.toString())} style={{ marginTop: 10, fontSize: 14, color: "#185FA5", background: "#E6F1FB", border: "none", cursor: "pointer", padding: "8px 16px", borderRadius: 8, fontWeight: 500 }}>Cargar saldo pendiente ({P(saldo)})</button>}
         </div>
 
+        {/* Medio de pago */}
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 10 }}>Medio de pago</div>
           <div style={{ display: "flex", gap: 12 }}>
@@ -504,11 +523,13 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
           </div>
         </div>
 
+        {/* Nota */}
         <div style={{ marginBottom: 18 }}>
           <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 8 }}>Nota (opcional)</div>
           <input placeholder="Ej: número de transferencia…" value={nota} onChange={e => setNota(e.target.value)} style={{ width: "100%", padding: "14px", borderRadius: 10, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 16, boxSizing: "border-box" }} />
         </div>
 
+        {/* Comprobante */}
         <div>
           <div style={{ fontSize: 14, color: "var(--color-text-secondary)", marginBottom: 10 }}>Comprobante (opcional)</div>
           {!preview
@@ -727,13 +748,11 @@ function TabDepo({ db, stockDepo, stockOp, alertasStock }) {
 
 function TabOp({ db, stockOp, stockDepo }) {
   const [show,setShow]=useState(false),[form,setForm]=useState(emptyIns()),[nota,setNota]=useState(""),[saving,setSaving]=useState(false),[ok,setOk]=useState(false),[errs,setErrs]=useState({});
-  const [editandoEntrega,setEditandoEntrega]=useState(null),[confirmElim,setConfirmElim]=useState(null),[savingEdit,setSavingEdit]=useState(false);
   const formNum=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,parseFloat(v)||0]));
   const costoRetiro=costoIns(formNum,db.preciosIns);
   const comisionPorServ = db.comisionOp || 0;
   const totalServiciosGlobal = db.visitas.reduce((s, v) => s + serviciosDeVisita(v), 0);
   const totalComision = totalServiciosGlobal * comisionPorServ;
-
   async function entregar() {
     const ins=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,parseFloat(v)||0]));
     const e={}; INSUMOS.forEach(i=>{if(ins[i.id]>(stockDepo[i.id]||0))e[i.id]=true;});
@@ -741,23 +760,8 @@ function TabOp({ db, stockOp, stockDepo }) {
     setErrs({});setSaving(true);await db.addEntregaOp({insumos:ins,nota});
     setForm(emptyIns());setNota("");setShow(false);setSaving(false);setOk(true);setTimeout(()=>setOk(false),2500);
   }
-
-  async function guardarEdicion() {
-    setSavingEdit(true);
-    const ins=Object.fromEntries(Object.entries(editandoEntrega.insumos).map(([k,v])=>[k,parseFloat(v)||0]));
-    await sb.from("entregas_operador").update({ insumos: ins, nota: editandoEntrega.nota }).eq("id", editandoEntrega.id);
-    await db.reload(); setSavingEdit(false); setEditandoEntrega(null);
-  }
-
-  async function eliminarEntrega(id) {
-    await sb.from("entregas_operador").delete().eq("id", id);
-    await db.reload(); setConfirmElim(null);
-  }
-
-  const entregasOrdenadas = db.entregasOp.slice().sort((a,b) => b.fecha.localeCompare(a.fecha));
-
+  const entregasConsolidadas=consolidarEntragas(db.entregasOp);
   return <div>
-    {confirmElim && <ConfirmModal title="Eliminar entrega" msg={`¿Eliminar la entrega del ${FF(confirmElim.fecha)}? Esto afectará el stock del operador.`} onConfirm={() => eliminarEntrega(confirmElim.id)} onCancel={() => setConfirmElim(null)} />}
     {ok&&<div style={{ background:"#EAF3DE",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:13,color:"#27500A" }}>✓ Entrega registrada.</div>}
     {comisionPorServ > 0 && <div style={{ background:"#E6F1FB",borderRadius:12,padding:"14px 16px",marginBottom:16 }}>
       <div style={{ fontSize:12,fontWeight:500,color:"#0C447C",marginBottom:10,textTransform:"uppercase",letterSpacing:".05em" }}>💰 Comisión del operador</div>
@@ -795,41 +799,14 @@ function TabOp({ db, stockOp, stockDepo }) {
       <button onClick={entregar} disabled={saving} style={{ padding:"10px 20px",borderRadius:9,border:"none",background:saving?"#888":"#185FA5",color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer" }}>{saving?"Guardando…":"Confirmar entrega"}</button>
     </Card>}
     <Sec mt={20}>Historial entregas al operador</Sec>
-    {entregasOrdenadas.map((e) => {
-      const costoE = costoIns(e.insumos, db.preciosIns);
-      const estaEditando = editandoEntrega?.id === e.id;
-      if (estaEditando) {
-        return <Card key={e.id} style={{ marginBottom:8, border:"1.5px solid #185FA5" }}>
-          <div style={{ fontSize:13,fontWeight:600,marginBottom:12 }}>✏️ Editando entrega del {FF(e.fecha)}</div>
-          {INSUMOS.map(i => <div key={i.id} style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
-            <span style={{ fontSize:14,width:20 }}>{i.emoji}</span>
-            <div style={{ flex:1,fontSize:13,color:"var(--color-text-secondary)" }}>{i.label}</div>
-            <input type="number" min="0" step={i.step} placeholder="0"
-              value={editandoEntrega.insumos[i.id]||""}
-              onChange={ev=>setEditandoEntrega(p=>({...p,insumos:{...p.insumos,[i.id]:ev.target.value}}))}
-              style={{ width:90,textAlign:"right",padding:"6px 8px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13 }} />
-            <span style={{ fontSize:11,color:"var(--color-text-secondary)",width:30 }}>{i.unit}</span>
-          </div>)}
-          <input placeholder="Nota" value={editandoEntrega.nota||""} onChange={ev=>setEditandoEntrega(p=>({...p,nota:ev.target.value}))} style={{ width:"100%",padding:"8px 10px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13,marginTop:4,marginBottom:12,boxSizing:"border-box" }} />
-          <div style={{ display:"flex",gap:8 }}>
-            <button onClick={guardarEdicion} disabled={savingEdit} style={{ flex:1,padding:9,borderRadius:9,border:"none",background:savingEdit?"#888":"#185FA5",color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer" }}>{savingEdit?"Guardando…":"Guardar"}</button>
-            <button onClick={()=>setEditandoEntrega(null)} style={{ padding:"9px 14px",borderRadius:9,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-secondary)",color:"var(--color-text-secondary)",fontSize:13,cursor:"pointer" }}>Cancelar</button>
-          </div>
-        </Card>;
-      }
-      return <Card key={e.id} style={{ marginBottom:8 }}>
-        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6 }}>
+    {entregasConsolidadas.map((e,idx)=>{const costoE=costoIns(e.insumos,db.preciosIns);
+      return <Card key={idx} style={{ marginBottom:8 }}>
+        <div style={{ display:"flex",justifyContent:"space-between",marginBottom:6 }}>
           <span style={{ fontSize:13,fontWeight:500 }}>{FF(e.fecha)}</span>
-          <div style={{ display:"flex",gap:8,alignItems:"center" }}>
-            {e.nota&&<span style={{ fontSize:12,color:"var(--color-text-secondary)" }}>{e.nota}</span>}
-            <span style={{ fontSize:13,fontWeight:700,color:"#185FA5" }}>{P(costoE)}</span>
-            <button onClick={()=>setEditandoEntrega({...e,insumos:{...e.insumos}})} style={{ padding:"4px 10px",borderRadius:7,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-secondary)",color:"var(--color-text-secondary)",fontSize:12,cursor:"pointer" }}>Editar</button>
-            <button onClick={()=>setConfirmElim(e)} style={{ padding:"4px 10px",borderRadius:7,border:"none",background:"#FCEBEB",color:"#A32D2D",fontSize:12,cursor:"pointer" }}>Eliminar</button>
-          </div>
+          <div style={{ display:"flex",gap:10,alignItems:"center" }}>{e.nota&&<span style={{ fontSize:12,color:"var(--color-text-secondary)" }}>{e.nota}</span>}<span style={{ fontSize:13,fontWeight:700,color:"#185FA5" }}>{P(costoE)}</span></div>
         </div>
         <div style={{ display:"flex",flexWrap:"wrap",gap:6 }}>{INSUMOS.filter(i=>(e.insumos[i.id]||0)>0).map(i=><Pill key={i.id}>{i.emoji} {FN(e.insumos[i.id])} {i.unit}</Pill>)}</div>
-      </Card>;
-    })}
+      </Card>;})}
   </div>;
 }
 
@@ -844,8 +821,8 @@ function TabCli({ db, onSelect, diasAlerta }) {
       return <div key={c.id} onClick={()=>onSelect(c)} style={{ background:"var(--color-background-primary)",borderRadius:12,border:`0.5px solid ${enAlerta?"var(--color-border-danger)":"var(--color-border-tertiary)"}`,padding:"12px 14px",marginBottom:8,cursor:"pointer",display:"flex",alignItems:"center",gap:12 }}
         onMouseEnter={e=>e.currentTarget.style.borderColor="#378ADD"} onMouseLeave={e=>e.currentTarget.style.borderColor=enAlerta?"var(--color-border-danger)":"var(--color-border-tertiary)"}>
         <Av nombre={c.nombre} bg={bg} c={col} size={40} />
-        <div style={{ flex:1,minWidth:0 }}><div style={{ fontSize:14,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{c.nombre}</div><div style={{ fontSize:12,color:enAlerta?"#A32D2D":"var(--color-text-secondary)",marginTop:2 }}>{semaforo} {dias===null?"Sin visitas":`Última visita ${DA(uv.fecha)}`} · {c.maquinas} máq.</div></div>
-        <div style={{ textAlign:"right",flexShrink:0 }}><div style={{ fontSize:13,fontWeight:600,color:"#185FA5" }}>{P(fat)}</div>{(fat-cob)>0&&<div style={{ fontSize:11,color:"#A32D2D" }}>saldo {P(fat-cob)}</div>}</div>
+        <div style={{ flex:1 }}><div style={{ fontSize:14,fontWeight:500 }}>{c.nombre}</div><div style={{ fontSize:12,color:enAlerta?"#A32D2D":"var(--color-text-secondary)",marginTop:2 }}>{semaforo} {dias===null?"Sin visitas":`Última visita ${DA(uv.fecha)}`} · {c.maquinas} máq.</div></div>
+        <div style={{ textAlign:"right" }}><div style={{ fontSize:13,fontWeight:600,color:"#185FA5" }}>{P(fat)}</div>{(fat-cob)>0&&<div style={{ fontSize:11,color:"#A32D2D" }}>saldo {P(fat-cob)}</div>}</div>
       </div>;
     })}
   </div>;
