@@ -73,9 +73,8 @@ const AVC = ["#E6F1FB:#0C447C","#E1F5EE:#085041","#FAEEDA:#633806","#FBEAF0:#722
 function avc(id) { const [bg, c] = AVC[(id - 1) % AVC.length].split(":"); return { bg, c }; }
 
 function Av({ nombre, size = 36, bg = "#E6F1FB", c = "#0C447C" }) {
-  const iniciales = nombre.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
-  return <div style={{ width: size, height: size, minWidth: size, borderRadius: "50%", background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .34, fontWeight: 700, flexShrink: 0, overflow: "hidden", userSelect: "none", lineHeight: 1 }}>{iniciales}</div>;
-
+  return <div style={{ width: size, height: size, borderRadius: "50%", background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .38, fontWeight: 700, flexShrink: 0 }}>{nombre.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase()}</div>;
+}
 function Sec({ children, mt = 4 }) {
   return <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10, marginTop: mt }}>{children}</div>;
 }
@@ -971,4 +970,4 @@ function TabCfg({ db }) {
     </div>)}
     <button onClick={guardarConfig} disabled={saving} style={{ padding:"10px 20px",borderRadius:10,border:"none",background:saved?"#1D9E75":saving?"#888":"#185FA5",color:"#fff",fontSize:13,fontWeight:500,cursor:"pointer",marginBottom:24 }}>{saved?"✓ Guardado":saving?"Guardando…":"Guardar cambios"}</button>
   </div>;
-  
+}
