@@ -171,7 +171,7 @@ export default function App() {
       await sb.from("cobros").insert({ cliente_id: c.clienteId, fecha: hoy(), monto: c.monto, medio: c.medio, nota: c.nota, comprobante_url: c.comprobanteUrl || null });
       await reload();
     },
-    async addEntregaOp(e) { await sb.from("entregas_operador").insert({ fecha: hoy(), insumos: e.insumos, nota: e.nota }); await reload(); },
+    async addEntregaOp(e) { await sb.from("entregas_operador").insert({ fecha: e.fecha || hoy(), insumos: e.insumos, nota: e.nota }); await reload(); },
     async addIngresoDepo(i) { await sb.from("ingresos_deposito").insert({ fecha: hoy(), insumos: i.insumos, nota: i.nota }); await reload(); },
     async updateCliente(c) { await sb.from("clientes").update({ nombre: c.nombre, direccion: c.direccion, maquinas: c.maquinas, minimo: c.minimo }).eq("id", c.id); await reload(); },
     async deleteCliente(id) { await sb.from("clientes").update({ activo: false, pendiente_aprobacion: false }).eq("id", id); await reload(); },
@@ -726,7 +726,7 @@ function TabDepo({ db, stockDepo, stockOp, alertasStock }) {
 }
 
 function TabOp({ db, stockOp, stockDepo }) {
-  const [show,setShow]=useState(false),[form,setForm]=useState(emptyIns()),[nota,setNota]=useState(""),[saving,setSaving]=useState(false),[ok,setOk]=useState(false),[errs,setErrs]=useState({});
+  const [show,setShow]=useState(false),[form,setForm]=useState(emptyIns()),[nota,setNota]=useState(""),[fechaEntrega,setFechaEntrega]=useState(hoy()),[saving,setSaving]=useState(false),[ok,setOk]=useState(false),[errs,setErrs]=useState({});
   const [editandoEntrega,setEditandoEntrega]=useState(null),[confirmElim,setConfirmElim]=useState(null),[savingEdit,setSavingEdit]=useState(false);
   const formNum=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,parseFloat(v)||0]));
   const costoRetiro=costoIns(formNum,db.preciosIns);
@@ -738,8 +738,8 @@ function TabOp({ db, stockOp, stockDepo }) {
     const ins=Object.fromEntries(Object.entries(form).map(([k,v])=>[k,parseFloat(v)||0]));
     const e={}; INSUMOS.forEach(i=>{if(ins[i.id]>(stockDepo[i.id]||0))e[i.id]=true;});
     if(Object.keys(e).length){setErrs(e);return;}
-    setErrs({});setSaving(true);await db.addEntregaOp({insumos:ins,nota});
-    setForm(emptyIns());setNota("");setShow(false);setSaving(false);setOk(true);setTimeout(()=>setOk(false),2500);
+    setErrs({});setSaving(true);await db.addEntregaOp({insumos:ins,nota,fecha:fechaEntrega});
+    setForm(emptyIns());setNota("");setFechaEntrega(hoy());setShow(false);setSaving(false);setOk(true);setTimeout(()=>setOk(false),2500);
   }
 
   async function guardarEdicion() {
@@ -781,6 +781,10 @@ function TabOp({ db, stockOp, stockDepo }) {
     <button onClick={()=>setShow(p=>!p)} style={{ width:"100%",padding:11,borderRadius:10,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"#185FA5",fontSize:13,fontWeight:500,cursor:"pointer",marginBottom:12 }}>{show?"Cancelar":"+ Registrar entrega al operador"}</button>
     {show&&<Card style={{ marginBottom:16 }}>
       <div style={{ fontSize:13,fontWeight:500,marginBottom:12 }}>Descuenta del depósito → pasa al operador.</div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ fontSize:13,color:"var(--color-text-secondary)",marginBottom:4 }}>Fecha de entrega</div>
+        <input type="date" value={fechaEntrega} onChange={e=>setFechaEntrega(e.target.value)} style={{ width:"100%",padding:"8px 10px",borderRadius:8,border:"0.5px solid var(--color-border-secondary)",background:"var(--color-background-primary)",color:"var(--color-text-primary)",fontSize:13,boxSizing:"border-box" }} />
+      </div>
       {INSUMOS.map(i=><div key={i.id} style={{ display:"flex",alignItems:"center",gap:10,marginBottom:8 }}>
         <span style={{ fontSize:14,width:20 }}>{i.emoji}</span>
         <div style={{ flex:1 }}><div style={{ fontSize:13,color:"var(--color-text-secondary)" }}>{i.label}</div><div style={{ fontSize:11,color:(stockDepo[i.id]||0)===0?"#A32D2D":"var(--color-text-tertiary)" }}>Depósito: {FN(stockDepo[i.id]||0)} {i.unit}</div></div>
