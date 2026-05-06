@@ -47,6 +47,13 @@ function DA(f) { const diff = Math.floor((new Date() - new Date(f)) / 86400000);
 function diasDesde(f) { return Math.floor((new Date() - new Date(f)) / 86400000); }
 function hoy() { return new Date().toISOString().split("T")[0]; }
 function horaActual() { return new Date().toTimeString().slice(0, 5); }
+function mesActual() { return new Date().toISOString().slice(0, 7); }
+function nombreMes(ym) {
+  if (!ym) return "Todos";
+  const [y, m] = ym.split("-");
+  const meses = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+  return `${meses[parseInt(m) - 1]} ${y}`;
+}
 
 async function subirComprobante(file) {
   const ext = file.name.split(".").pop();
@@ -516,6 +523,8 @@ function FormCobro({ cliente, precioServ, visitas, cobros, saving, onGuardar, on
 function AdminApp({ db, onLogout }) {
   const [tab, setTab] = useState("resumen");
   const [detalle, setDetalle] = useState(null);
+  const [mesFiltro, setMesFiltro] = useState(mesActual());
+
   const totIng = sumar(db.ingresosDepo), totOp = sumar(db.entregasOp), totCli = sumar(db.visitas);
   const stockDepo = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totIng[i.id] || 0) - (totOp[i.id] || 0))]));
   const stockOp = Object.fromEntries(INSUMOS.map(i => [i.id, Math.max(0, (totOp[i.id] || 0) - (totCli[i.id] || 0))]));
@@ -524,6 +533,19 @@ function AdminApp({ db, onLogout }) {
   const clientesSinVisita = db.clientes.filter(c => { const uv = db.visitas.find(v => v.clienteId === c.id); return uv ? diasDesde(uv.fecha) >= diasAlerta : true; });
   const pendientes = db.clientesPendientes || [];
   const totalAlertas = alertasStock.length + clientesSinVisita.length + pendientes.length;
+
+  // Filtrar visitas y cobros por mes
+  const visitasFiltradas = mesFiltro ? db.visitas.filter(v => v.fecha && v.fecha.startsWith(mesFiltro)) : db.visitas;
+  const cobrosFiltrados = mesFiltro ? db.cobros.filter(c => c.fecha && c.fecha.startsWith(mesFiltro)) : db.cobros;
+
+  // Obtener lista de meses disponibles
+  const mesesDisponibles = [...new Set([
+    ...db.visitas.map(v => v.fecha?.slice(0, 7)),
+    ...db.cobros.map(c => c.fecha?.slice(0, 7)),
+  ].filter(Boolean))].sort().reverse();
+
+  const dbFiltrado = { ...db, visitas: visitasFiltradas, cobros: cobrosFiltrados };
+
   const tabs = [
     { id: "resumen", icon: "📊", label: "Resumen" },
     { id: "clientes", icon: "👥", label: "Clientes" },
@@ -531,6 +553,7 @@ function AdminApp({ db, onLogout }) {
     { id: "operador", icon: "🚚", label: "Operador" },
     { id: "config", icon: "⚙️", label: "Config" },
   ];
+
   return <div style={{ minHeight: "100vh", background: "var(--color-background-tertiary)" }}>
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "16px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -543,6 +566,7 @@ function AdminApp({ db, onLogout }) {
       </div>
       <button onClick={onLogout} style={{ fontSize: 13, color: "var(--color-text-secondary)", background: "var(--color-background-secondary)", border: "none", cursor: "pointer", padding: "8px 16px", borderRadius: 10 }}>Salir</button>
     </div>
+
     {pendientes.length > 0 && <div style={{ background: "#E1F5EE", borderBottom: "0.5px solid #1D9E75", padding: "12px 24px" }}>
       <div style={{ fontSize: 13, fontWeight: 600, color: "#085041", marginBottom: 8 }}>🆕 Clientes pendientes de aprobación</div>
       {pendientes.map(c => <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, background: "#fff", borderRadius: 10, padding: "10px 14px" }}>
@@ -551,15 +575,27 @@ function AdminApp({ db, onLogout }) {
         <button onClick={() => db.rechazarCliente(c.id)} style={{ padding: "6px 14px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-secondary)", color: "var(--color-text-secondary)", fontSize: 13, cursor: "pointer" }}>Rechazar</button>
       </div>)}
     </div>}
+
+    {/* Selector de mes — visible en resumen y clientes */}
+    {(tab === "resumen" || tab === "clientes") && <div style={{ background: "var(--color-background-secondary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "10px 24px", display: "flex", alignItems: "center", gap: 12 }}>
+      <span style={{ fontSize: 13, color: "var(--color-text-secondary)", fontWeight: 500 }}>📅 Período:</span>
+      <select value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} style={{ padding: "6px 12px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, cursor: "pointer" }}>
+        {mesesDisponibles.map(m => <option key={m} value={m}>{nombreMes(m)}</option>)}
+        <option value="">Todos los períodos</option>
+      </select>
+      {mesFiltro && <span style={{ fontSize: 12, color: "#185FA5", fontWeight: 500 }}>Mostrando: {nombreMes(mesFiltro)}</span>}
+    </div>}
+
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", overflowX: "auto", padding: "0 8px" }}>
       {tabs.map(t => <button key={t.id} onClick={() => { setTab(t.id); setDetalle(null); }} style={{ padding: "14px 20px", border: "none", background: "none", cursor: "pointer", fontSize: 13, whiteSpace: "nowrap", color: tab === t.id ? "#185FA5" : "var(--color-text-secondary)", borderBottom: tab === t.id ? "2px solid #185FA5" : "2px solid transparent", fontWeight: tab === t.id ? 600 : 400, display: "flex", alignItems: "center", gap: 6 }}>
         <span>{t.icon}</span>{t.label}
       </button>)}
     </div>
+
     <div style={{ padding: "20px 24px", maxWidth: 960, margin: "0 auto" }}>
-      {tab === "resumen" && <TabResumen db={db} stockDepo={stockDepo} alertasStock={alertasStock} clientesSinVisita={clientesSinVisita} diasAlerta={diasAlerta} onIrClientes={() => setTab("clientes")} />}
-      {tab === "clientes" && !detalle && <TabClientes db={db} onSelect={setDetalle} diasAlerta={diasAlerta} />}
-      {tab === "clientes" && detalle && <DetalleCli cliente={detalle} db={db} onBack={() => setDetalle(null)} />}
+      {tab === "resumen" && <TabResumen db={dbFiltrado} stockDepo={stockDepo} alertasStock={alertasStock} clientesSinVisita={clientesSinVisita} diasAlerta={diasAlerta} onIrClientes={() => setTab("clientes")} mesFiltro={mesFiltro} />}
+      {tab === "clientes" && !detalle && <TabClientes db={dbFiltrado} onSelect={setDetalle} diasAlerta={diasAlerta} />}
+      {tab === "clientes" && detalle && <DetalleCli cliente={detalle} db={dbFiltrado} onBack={() => setDetalle(null)} mesFiltro={mesFiltro} />}
       {tab === "deposito" && <TabDepo db={db} stockDepo={stockDepo} stockOp={stockOp} alertasStock={db.alertasStock} />}
       {tab === "operador" && <TabOp db={db} stockOp={stockOp} stockDepo={stockDepo} />}
       {tab === "config" && <TabCfg db={db} />}
@@ -567,7 +603,7 @@ function AdminApp({ db, onLogout }) {
   </div>;
 }
 
-function TabResumen({ db, stockDepo, alertasStock, clientesSinVisita, diasAlerta, onIrClientes }) {
+function TabResumen({ db, stockDepo, alertasStock, clientesSinVisita, diasAlerta, onIrClientes, mesFiltro }) {
   const px = db.precioServ;
   const resumen = db.clientes.map(c => {
     const vs = db.visitas.filter(v => v.clienteId === c.id);
@@ -577,19 +613,22 @@ function TabResumen({ db, stockDepo, alertasStock, clientesSinVisita, diasAlerta
     const cI = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
     const cob = cs.reduce((s, c) => s + c.monto, 0);
     const gan = fat - cI, mar = fat > 0 ? (gan / fat) * 100 : 0;
-    const uv = vs[0];
-    return { ...c, sR, sF, fat, cI, cob, saldo: fat - cob, gan, mar, uv };
+    const uvTodas = vs[0];
+    return { ...c, sR, sF, fat, cI, cob, saldo: fat - cob, gan, mar, uv: uvTodas };
   }).sort((a, b) => b.saldo - a.saldo);
+
   const tF = resumen.reduce((s, r) => s + r.fat, 0);
   const tCob = resumen.reduce((s, r) => s + r.cob, 0);
   const tSaldo = tF - tCob;
   const tG = resumen.reduce((s, r) => s + r.gan, 0);
+
   return <div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 28 }}>
       <Met label="💰 Saldo por cobrar" value={P(tSaldo)} sub={`de ${P(tF)} facturado`} warn={tSaldo > 0} big />
-      <Met label="✅ Total cobrado" value={P(tCob)} sub={`${db.cobros.length} pagos registrados`} big />
-      <Met label="📈 Ganancia bruta" value={P(tG)} sub={tF > 0 ? `${((tG/tF)*100).toFixed(1)}% de margen` : ""} big />
+      <Met label="✅ Total cobrado" value={P(tCob)} sub={`${db.cobros.length} pagos`} big />
+      <Met label="📈 Ganancia bruta" value={P(tG)} sub={tF > 0 ? `${((tG/tF)*100).toFixed(1)}% margen` : ""} big />
     </div>
+
     {(alertasStock.length > 0 || clientesSinVisita.length > 0) && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
       {alertasStock.length > 0 && <div style={{ background: "#FCEBEB", borderRadius: 12, padding: "14px 16px" }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "#A32D2D", marginBottom: 8 }}>⚠ Stock bajo</div>
@@ -601,12 +640,13 @@ function TabResumen({ db, stockDepo, alertasStock, clientesSinVisita, diasAlerta
         {clientesSinVisita.length > 4 && <div style={{ fontSize: 11, color: "#633806", marginTop: 4 }}>+{clientesSinVisita.length - 4} más</div>}
       </div>}
     </div>}
+
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
       <div style={{ fontSize: 15, fontWeight: 600 }}>Clientes — saldo pendiente</div>
       <button onClick={onIrClientes} style={{ fontSize: 13, color: "#185FA5", background: "none", border: "none", cursor: "pointer" }}>Ver todos →</button>
     </div>
     {resumen.filter(r => r.saldo > 0).length === 0
-      ? <Card><div style={{ fontSize: 14, color: "var(--color-text-secondary)", textAlign: "center", padding: "20px 0" }}>✓ Sin saldos pendientes</div></Card>
+      ? <Card><div style={{ fontSize: 14, color: "var(--color-text-secondary)", textAlign: "center", padding: "20px 0" }}>✓ Sin saldos pendientes{mesFiltro ? ` en ${nombreMes(mesFiltro)}` : ""}</div></Card>
       : resumen.filter(r => r.saldo > 0).map(r => {
         const { bg, c } = avc(r.id);
         const diasUv = r.uv ? diasDesde(r.uv.fecha) : null;
@@ -625,6 +665,7 @@ function TabResumen({ db, stockDepo, alertasStock, clientesSinVisita, diasAlerta
           </div>
         </div>;
       })}
+
     <div style={{ marginTop: 28, marginBottom: 12, fontSize: 15, fontWeight: 600 }}>Ranking por ganancia</div>
     {resumen.slice(0, 5).map((r, idx) => {
       const { bg, c } = avc(r.id);
@@ -680,7 +721,7 @@ function TabClientes({ db, onSelect, diasAlerta }) {
             </div>
           </div>
           <div style={{ fontSize: 12, color: enAlerta ? "#A32D2D" : "var(--color-text-secondary)" }}>
-            {semaforo} {dias === null ? "Sin visitas registradas" : `Última visita ${DA(uv.fecha)}`}
+            {semaforo} {dias === null ? "Sin visitas en este período" : `Última visita ${DA(uv.fecha)}`}
           </div>
         </div>;
       })}
@@ -688,7 +729,7 @@ function TabClientes({ db, onSelect, diasAlerta }) {
   </div>;
 }
 
-function DetalleCli({ cliente, db, onBack }) {
+function DetalleCli({ cliente, db, onBack, mesFiltro }) {
   const vs = db.visitas.filter(v => v.clienteId === cliente.id);
   const cobs = db.cobros.filter(c => c.clienteId === cliente.id);
   const sR = vs.reduce((s, v) => s + serviciosDeVisita(v), 0);
@@ -699,6 +740,7 @@ function DetalleCli({ cliente, db, onBack }) {
   const [dTab, setDTab] = useState("visitas");
   return <div>
     <button onClick={onBack} style={{ fontSize: 13, color: "#185FA5", background: "none", border: "none", cursor: "pointer", marginBottom: 16, padding: 0 }}>← Volver a clientes</button>
+    {mesFiltro && <div style={{ background: "#E6F1FB", borderRadius: 10, padding: "8px 14px", marginBottom: 12, fontSize: 13, color: "#0C447C", fontWeight: 500 }}>📅 Mostrando datos de {nombreMes(mesFiltro)}</div>}
     <Card style={{ marginBottom: 16 }}>
       <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 2 }}>{cliente.nombre}</div>
       <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 16 }}>{cliente.direccion} · {cliente.maquinas} máquinas · mínimo {cliente.minimo}</div>
@@ -712,8 +754,11 @@ function DetalleCli({ cliente, db, onBack }) {
         <div><div style={{ fontSize: 12, fontWeight: 500, color: "#0C447C" }}>☕ Costo por café servido</div><div style={{ fontSize: 11, color: "#185FA5" }}>{sR.toLocaleString()} servicios</div></div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#0C447C" }}>{P(costoPorCafe)}</div>
       </div>}
-      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, textTransform: "uppercase" }}>Total insumos recibidos</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{INSUMOS.filter(i => insT[i.id] > 0).map(i => <Pill key={i.id}>{i.emoji} {FN(insT[i.id])} {i.unit}</Pill>)}</div>
+      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, textTransform: "uppercase" }}>Insumos entregados{mesFiltro ? ` en ${nombreMes(mesFiltro)}` : ""}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {INSUMOS.filter(i => insT[i.id] > 0).map(i => <Pill key={i.id}>{i.emoji} {FN(insT[i.id])} {i.unit}</Pill>)}
+        {INSUMOS.every(i => !insT[i.id]) && <span style={{ fontSize: 12, color: "var(--color-text-tertiary)", fontStyle: "italic" }}>Sin entregas en este período</span>}
+      </div>
     </Card>
     <div style={{ display: "flex", background: "var(--color-background-secondary)", borderRadius: 10, padding: 3, marginBottom: 16 }}>
       {[{ id: "visitas", l: `Visitas (${vs.length})` }, { id: "cobros", l: `Cobros (${cobs.length})` }].map(t => (
@@ -721,7 +766,7 @@ function DetalleCli({ cliente, db, onBack }) {
       ))}
     </div>
     {dTab === "visitas" && <>
-      {vs.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Sin visitas.</div>}
+      {vs.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Sin visitas{mesFiltro ? ` en ${nombreMes(mesFiltro)}` : ""}.</div>}
       {vs.map(v => { const cafes = serviciosDeVisita(v), esManual = v.serviciosManuales > 0, cV = costoIns(v.insumos, db.preciosIns), cpC = cafes > 0 ? cV / cafes : null;
         return <Card key={v.id} style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -742,7 +787,7 @@ function DetalleCli({ cliente, db, onBack }) {
         </Card>; })}
     </>}
     {dTab === "cobros" && <>
-      {cobs.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Sin cobros registrados.</div>}
+      {cobs.length === 0 && <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>Sin cobros{mesFiltro ? ` en ${nombreMes(mesFiltro)}` : ""}.</div>}
       {cobs.map(c => { const mp = MEDIOS_PAGO.find(m => m.id === c.medio);
         return <Card key={c.id} style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: c.comprobanteUrl ? 10 : 0 }}>
