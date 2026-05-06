@@ -69,11 +69,7 @@ function avc(id) { const [bg, c] = AVC[(id - 1) % AVC.length].split(":"); return
 
 function Av({ nombre, size = 36, bg = "#E6F1FB", c = "#0C447C" }) {
   const iniciales = nombre.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
-  return (
-    <div style={{ width: size, height: size, minWidth: size, borderRadius: "50%", background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .34, fontWeight: 700, flexShrink: 0, overflow: "hidden", userSelect: "none", lineHeight: 1 }}>
-      {iniciales}
-    </div>
-  );
+  return <div style={{ width: size, height: size, minWidth: size, borderRadius: "50%", background: bg, color: c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * .34, fontWeight: 700, flexShrink: 0, overflow: "hidden", userSelect: "none", lineHeight: 1 }}>{iniciales}</div>;
 }
 function Sec({ children, mt = 4 }) {
   return <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-secondary)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10, marginTop: mt }}>{children}</div>;
@@ -82,13 +78,11 @@ function Card({ children, style = {} }) {
   return <div style={{ background: "var(--color-background-primary)", borderRadius: 14, border: "0.5px solid var(--color-border-tertiary)", padding: "14px 16px", ...style }}>{children}</div>;
 }
 function Met({ label, value, sub, warn, big }) {
-  return (
-    <div style={{ background: warn ? "#FCEBEB" : "var(--color-background-secondary)", borderRadius: 12, padding: big ? "20px 18px" : "12px 14px" }}>
-      <div style={{ fontSize: 12, color: warn ? "#A32D2D" : "var(--color-text-secondary)", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: big ? 28 : 20, fontWeight: 700, color: warn ? "#A32D2D" : "var(--color-text-primary)", letterSpacing: -0.5 }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, color: warn ? "#791F1F" : "var(--color-text-secondary)", marginTop: 4 }}>{sub}</div>}
-    </div>
-  );
+  return <div style={{ background: warn ? "#FCEBEB" : "var(--color-background-secondary)", borderRadius: 12, padding: big ? "20px 18px" : "12px 14px" }}>
+    <div style={{ fontSize: 12, color: warn ? "#A32D2D" : "var(--color-text-secondary)", marginBottom: 6 }}>{label}</div>
+    <div style={{ fontSize: big ? 28 : 20, fontWeight: 700, color: warn ? "#A32D2D" : "var(--color-text-primary)", letterSpacing: -0.5 }}>{value}</div>
+    {sub && <div style={{ fontSize: 11, color: warn ? "#791F1F" : "var(--color-text-secondary)", marginTop: 4 }}>{sub}</div>}
+  </div>;
 }
 function Pill({ children, bg = "#F1EFE8", c = "#2C2C2A" }) {
   return <span style={{ fontSize: 12, background: bg, color: c, padding: "4px 10px", borderRadius: 20, whiteSpace: "nowrap" }}>{children}</span>;
@@ -534,11 +528,9 @@ function AdminApp({ db, onLogout }) {
   const pendientes = db.clientesPendientes || [];
   const totalAlertas = alertasStock.length + clientesSinVisita.length + pendientes.length;
 
-  // Filtrar visitas y cobros por mes
-  const visitasFiltradas = mesFiltro ? db.visitas.filter(v => v.fecha && v.fecha.startsWith(mesFiltro)) : db.visitas;
-  const cobrosFiltrados = mesFiltro ? db.cobros.filter(c => c.fecha && c.fecha.startsWith(mesFiltro)) : db.cobros;
+  const visitasFiltradas = mesFiltro ? db.visitas.filter(v => v.fecha?.startsWith(mesFiltro)) : db.visitas;
+  const cobrosFiltrados = mesFiltro ? db.cobros.filter(c => c.fecha?.startsWith(mesFiltro)) : db.cobros;
 
-  // Obtener lista de meses disponibles
   const mesesDisponibles = [...new Set([
     ...db.visitas.map(v => v.fecha?.slice(0, 7)),
     ...db.cobros.map(c => c.fecha?.slice(0, 7)),
@@ -576,14 +568,13 @@ function AdminApp({ db, onLogout }) {
       </div>)}
     </div>}
 
-    {/* Selector de mes — visible en resumen y clientes */}
     {(tab === "resumen" || tab === "clientes") && <div style={{ background: "var(--color-background-secondary)", borderBottom: "0.5px solid var(--color-border-tertiary)", padding: "10px 24px", display: "flex", alignItems: "center", gap: 12 }}>
       <span style={{ fontSize: 13, color: "var(--color-text-secondary)", fontWeight: 500 }}>📅 Período:</span>
       <select value={mesFiltro} onChange={e => setMesFiltro(e.target.value)} style={{ padding: "6px 12px", borderRadius: 8, border: "0.5px solid var(--color-border-secondary)", background: "var(--color-background-primary)", color: "var(--color-text-primary)", fontSize: 13, cursor: "pointer" }}>
         {mesesDisponibles.map(m => <option key={m} value={m}>{nombreMes(m)}</option>)}
         <option value="">Todos los períodos</option>
       </select>
-      {mesFiltro && <span style={{ fontSize: 12, color: "#185FA5", fontWeight: 500 }}>Mostrando: {nombreMes(mesFiltro)}</span>}
+      {mesFiltro && <span style={{ fontSize: 12, color: "#185FA5", fontWeight: 500 }}>{nombreMes(mesFiltro)}</span>}
     </div>}
 
     <div style={{ background: "var(--color-background-primary)", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", overflowX: "auto", padding: "0 8px" }}>
@@ -593,7 +584,7 @@ function AdminApp({ db, onLogout }) {
     </div>
 
     <div style={{ padding: "20px 24px", maxWidth: 960, margin: "0 auto" }}>
-      {tab === "resumen" && <TabResumen db={dbFiltrado} stockDepo={stockDepo} alertasStock={alertasStock} clientesSinVisita={clientesSinVisita} diasAlerta={diasAlerta} onIrClientes={() => setTab("clientes")} mesFiltro={mesFiltro} />}
+      {tab === "resumen" && <TabResumen db={dbFiltrado} stockDepo={stockDepo} alertasStock={alertasStock} clientesSinVisita={clientesSinVisita} diasAlerta={diasAlerta} onIrClientes={() => setTab("clientes")} mesFiltro={mesFiltro} preciosIns={db.preciosIns} />}
       {tab === "clientes" && !detalle && <TabClientes db={dbFiltrado} onSelect={setDetalle} diasAlerta={diasAlerta} />}
       {tab === "clientes" && detalle && <DetalleCli cliente={detalle} db={dbFiltrado} onBack={() => setDetalle(null)} mesFiltro={mesFiltro} />}
       {tab === "deposito" && <TabDepo db={db} stockDepo={stockDepo} stockOp={stockOp} alertasStock={db.alertasStock} />}
@@ -603,31 +594,59 @@ function AdminApp({ db, onLogout }) {
   </div>;
 }
 
-function TabResumen({ db, stockDepo, alertasStock, clientesSinVisita, diasAlerta, onIrClientes, mesFiltro }) {
+function TabResumen({ db, stockDepo, alertasStock, clientesSinVisita, diasAlerta, onIrClientes, mesFiltro, preciosIns }) {
   const px = db.precioServ;
   const resumen = db.clientes.map(c => {
     const vs = db.visitas.filter(v => v.clienteId === c.id);
     const cs = db.cobros.filter(co => co.clienteId === c.id);
     const sR = vs.reduce((s, v) => s + serviciosDeVisita(v), 0);
     const sF = Math.max(c.minimo, sR), fat = sF * px;
-    const cI = vs.reduce((s, v) => s + costoIns(v.insumos, db.preciosIns), 0);
+    const cI = vs.reduce((s, v) => s + costoIns(v.insumos, preciosIns), 0);
     const cob = cs.reduce((s, c) => s + c.monto, 0);
     const gan = fat - cI, mar = fat > 0 ? (gan / fat) * 100 : 0;
-    const uvTodas = vs[0];
-    return { ...c, sR, sF, fat, cI, cob, saldo: fat - cob, gan, mar, uv: uvTodas };
+    const uv = vs[0];
+    return { ...c, sR, sF, fat, cI, cob, saldo: fat - cob, gan, mar, uv };
   }).sort((a, b) => b.saldo - a.saldo);
 
   const tF = resumen.reduce((s, r) => s + r.fat, 0);
   const tCob = resumen.reduce((s, r) => s + r.cob, 0);
   const tSaldo = tF - tCob;
   const tG = resumen.reduce((s, r) => s + r.gan, 0);
+  const tCostoIns = resumen.reduce((s, r) => s + r.cI, 0);
+  const totalServicios = resumen.reduce((s, r) => s + r.sR, 0);
+
+  // Calcular insumos consumidos en el período
+  const insumosConsumidos = sumar(db.visitas);
 
   return <div>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 28 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 24 }}>
       <Met label="💰 Saldo por cobrar" value={P(tSaldo)} sub={`de ${P(tF)} facturado`} warn={tSaldo > 0} big />
       <Met label="✅ Total cobrado" value={P(tCob)} sub={`${db.cobros.length} pagos`} big />
       <Met label="📈 Ganancia bruta" value={P(tG)} sub={tF > 0 ? `${((tG/tF)*100).toFixed(1)}% margen` : ""} big />
     </div>
+
+    {/* Gasto en insumos del período */}
+    {tCostoIns > 0 && <Card style={{ marginBottom: 24, background: "var(--color-background-primary)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>📦 Gasto en insumos{mesFiltro ? ` — ${nombreMes(mesFiltro)}` : ""}</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "#633806" }}>{P(tCostoIns)}</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginBottom: 12 }}>
+        {INSUMOS.filter(i => (insumosConsumidos[i.id] || 0) > 0).map(i => {
+          const cant = insumosConsumidos[i.id] || 0;
+          const costo = cant * (preciosIns[i.id] || 0);
+          return <div key={i.id} style={{ background: "var(--color-background-secondary)", borderRadius: 10, padding: "10px 12px" }}>
+            <div style={{ fontSize: 12, color: "var(--color-text-secondary)", marginBottom: 4 }}>{i.emoji} {i.label}</div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>{FN(cant)} {i.unit}</div>
+            <div style={{ fontSize: 11, color: "#633806", marginTop: 2 }}>{P(costo)}</div>
+          </div>;
+        })}
+      </div>
+      {totalServicios > 0 && <div style={{ background: "#FAEEDA", borderRadius: 10, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 13, color: "#633806" }}>Costo promedio por servicio</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#633806" }}>{P(tCostoIns / totalServicios)}</div>
+      </div>}
+    </Card>}
 
     {(alertasStock.length > 0 || clientesSinVisita.length > 0) && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
       {alertasStock.length > 0 && <div style={{ background: "#FCEBEB", borderRadius: 12, padding: "14px 16px" }}>
@@ -740,7 +759,7 @@ function DetalleCli({ cliente, db, onBack, mesFiltro }) {
   const [dTab, setDTab] = useState("visitas");
   return <div>
     <button onClick={onBack} style={{ fontSize: 13, color: "#185FA5", background: "none", border: "none", cursor: "pointer", marginBottom: 16, padding: 0 }}>← Volver a clientes</button>
-    {mesFiltro && <div style={{ background: "#E6F1FB", borderRadius: 10, padding: "8px 14px", marginBottom: 12, fontSize: 13, color: "#0C447C", fontWeight: 500 }}>📅 Mostrando datos de {nombreMes(mesFiltro)}</div>}
+    {mesFiltro && <div style={{ background: "#E6F1FB", borderRadius: 10, padding: "8px 14px", marginBottom: 12, fontSize: 13, color: "#0C447C", fontWeight: 500 }}>📅 {nombreMes(mesFiltro)}</div>}
     <Card style={{ marginBottom: 16 }}>
       <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 2 }}>{cliente.nombre}</div>
       <div style={{ fontSize: 13, color: "var(--color-text-secondary)", marginBottom: 16 }}>{cliente.direccion} · {cliente.maquinas} máquinas · mínimo {cliente.minimo}</div>
@@ -754,7 +773,7 @@ function DetalleCli({ cliente, db, onBack, mesFiltro }) {
         <div><div style={{ fontSize: 12, fontWeight: 500, color: "#0C447C" }}>☕ Costo por café servido</div><div style={{ fontSize: 11, color: "#185FA5" }}>{sR.toLocaleString()} servicios</div></div>
         <div style={{ fontSize: 20, fontWeight: 700, color: "#0C447C" }}>{P(costoPorCafe)}</div>
       </div>}
-      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, textTransform: "uppercase" }}>Insumos entregados{mesFiltro ? ` en ${nombreMes(mesFiltro)}` : ""}</div>
+      <div style={{ fontSize: 11, fontWeight: 500, color: "var(--color-text-secondary)", marginBottom: 6, textTransform: "uppercase" }}>Insumos entregados</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {INSUMOS.filter(i => insT[i.id] > 0).map(i => <Pill key={i.id}>{i.emoji} {FN(insT[i.id])} {i.unit}</Pill>)}
         {INSUMOS.every(i => !insT[i.id]) && <span style={{ fontSize: 12, color: "var(--color-text-tertiary)", fontStyle: "italic" }}>Sin entregas en este período</span>}
